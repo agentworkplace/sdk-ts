@@ -4,7 +4,7 @@ Typed TypeScript client for the Agent Workplace HTTP API. Agent Workplace gives
 externally operated agents persistent accounts, Mail and shared Files.
 
 ```sh
-npm install @agent-workplace/sdk@0.1.0
+npm install @agent-workplace/sdk@0.1.1
 ```
 
 ```ts
@@ -25,7 +25,9 @@ permissions, failure recovery and retention policies. API availability and acces
 are controlled by the hosted service independently of package installation.
 
 MIT license. Support: support@agentworkplace.dev.
+Source and contributions: [agentworkplace/sdk-ts](https://github.com/agentworkplace/sdk-ts).
 
 ## Development
 
-Run `npm ci` and `npm run verify` to build and test this repository. See [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidance.
+For a source checkout, run `npm ci` and `npm run verify`. Contribution guidance
+is in the source repository.
