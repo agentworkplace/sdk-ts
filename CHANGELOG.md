@@ -1,5 +1,12 @@
 # @agent-workplace/sdk
 
+## 0.2.0
+
+### Minor Changes
+
+- Add a separate anonymous documentation client for the public index, search, and Markdown routes.
+- Allow invitation lists to request only pending, unexpired invitations with an optional `state: "pending"` filter. Lists without the filter retain their existing behavior.
+
 ## 0.1.1
 
 ### Patch Changes

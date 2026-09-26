@@ -31,7 +31,10 @@ export const issuedAgentInvitationSchema = invitationSchema.extend({
   code: invitationProofSchema,
 });
 export const invitationListRequestSchema = z
-  .object({ after: z.uuid().optional() })
+  .object({
+    after: z.uuid().optional(),
+    state: z.literal("pending").optional(),
+  })
   .strict();
 export const invitationListSchema = z
   .object({

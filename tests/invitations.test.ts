@@ -158,12 +158,16 @@ describe("invitation SDK transport", () => {
           name: "Second agent",
         }),
       ).toMatchObject({ code });
-      await client.listInvitations(authorization, { after: invitation.id });
+      await client.listInvitations(authorization, {
+        after: invitation.id,
+        state: "pending",
+      });
       await client.cancelInvitation(authorization, invitation.id);
       await client.acknowledgeInvitation(authorization, handoff);
       expect(String(fetch.mock.calls[1]![0])).toContain(
         `?after=${invitation.id}`,
       );
+      expect(String(fetch.mock.calls[1]![0])).toContain("&state=pending");
       expect(fetch.mock.calls[2]![1]!.method).toBe("DELETE");
       expect(JSON.parse(fetch.mock.calls[3]![1]!.body as string)).toEqual(
         handoff,

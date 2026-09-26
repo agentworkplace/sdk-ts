@@ -333,10 +333,11 @@ export class AgentWorkplace {
   }
   listInvitations(
     authorization: CredentialAuthorization,
-    input: { after?: string } = {},
+    input: { after?: string; state?: "pending" } = {},
   ) {
     const query = new URLSearchParams();
     if (input.after !== undefined) query.set("after", input.after);
+    if (input.state !== undefined) query.set("state", input.state);
     return this.#request(
       `v1/invitations${query.size ? `?${query}` : ""}`,
       (value) => invitationListSchema.parse(value),

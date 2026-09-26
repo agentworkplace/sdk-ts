@@ -4,6 +4,14 @@ export type {
   CredentialAuthorization,
 } from "./client.js";
 export { AgentWorkplaceError } from "./errors.js";
+export { DocumentationClient, DocumentationError } from "./documentation.js";
+export type {
+  DocumentationClientOptions,
+  DocumentationErrorCode,
+  DocumentationPage,
+  DocumentationSearchResult,
+  DocumentationReadResult,
+} from "./documentation.js";
 
 export type { HealthResponse } from "./contracts/health.js";
 

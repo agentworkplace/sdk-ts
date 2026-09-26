@@ -2,12 +2,21 @@ import { describe, expect, it } from "vitest";
 import {
   createAgentInvitationRequestSchema,
   invitationProofSchema,
+  invitationListRequestSchema,
   invitationRedemptionRequestSchema,
   invitationRecoveryRequestSchema,
   invitationSchema,
 } from "./invitations.js";
 
 describe("invitation wire boundaries", () => {
+  it("accepts only the pending invitation list filter", () => {
+    expect(invitationListRequestSchema.parse({ state: "pending" })).toEqual({
+      state: "pending",
+    });
+    expect(
+      invitationListRequestSchema.safeParse({ state: "consumed" }).success,
+    ).toBe(false);
+  });
   it("accepts canonical recipient proofs and rejects alternate encodings", () => {
     for (const suffix of "AEIMQUYcgkosw048") {
       const proof = "A".repeat(42) + suffix;
