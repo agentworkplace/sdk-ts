@@ -14,6 +14,11 @@ export type {
 } from "./documentation.js";
 
 export type { HealthResponse } from "./contracts/health.js";
+export type {
+  FeedbackSubmission,
+  FeedbackReceipt,
+  FeedbackCategory,
+} from "./contracts/feedback.js";
 
 export type {
   OwnerEmailOperation,
