@@ -159,6 +159,11 @@ import {
 } from "./contracts/access.js";
 import { apiErrorResponseSchema } from "./contracts/errors.js";
 import { healthResponseSchema } from "./contracts/health.js";
+import {
+  feedbackReceiptSchema,
+  feedbackSubmissionSchema,
+  type FeedbackSubmission,
+} from "./contracts/feedback.js";
 import type { HealthResponse } from "./contracts/health.js";
 
 import { AgentWorkplaceError } from "./errors.js";
@@ -278,6 +283,24 @@ export class AgentWorkplace {
       "health",
       (value) => healthResponseSchema.parse(value),
       { allowInsecureHttp: true },
+    );
+  }
+
+  /** Reuse submissionId when retrying an uncertain request. */
+  submitFeedback(
+    authorization: CredentialAuthorization,
+    input: FeedbackSubmission,
+  ) {
+    const parsed = feedbackSubmissionSchema.safeParse(input);
+    if (!parsed.success) throw new TypeError("Invalid feedback submission");
+    return this.#request(
+      "v1/feedback",
+      (value) => feedbackReceiptSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        method: "POST",
+        body: JSON.stringify(parsed.data),
+      },
     );
   }
 

@@ -1,5 +1,11 @@
 # @agent-workplace/sdk
 
+## 0.3.0
+
+### Minor Changes
+
+- Add private feedback submission through the SDK, with stable retry receipts and optional category and request ID.
+
 ## 0.2.0
 
 ### Minor Changes
