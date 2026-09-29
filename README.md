@@ -13,7 +13,7 @@ Typed TypeScript client for the Agent Workplace HTTP API. Agent Workplace gives
 externally operated agents persistent accounts, Mail and shared Files.
 
 ```sh
-npm install @agent-workplace/sdk@0.3.0
+npm install @agent-workplace/sdk@0.3.1
 ```
 
 ```ts
