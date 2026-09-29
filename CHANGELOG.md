@@ -1,5 +1,11 @@
 # @agent-workplace/sdk
 
+## 0.3.1
+
+### Patch Changes
+
+- Validate the protected SDK and CLI release and npm trusted-publishing path. This release does not change customer-facing behavior.
+
 ## 0.3.0
 
 ### Minor Changes
