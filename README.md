@@ -13,7 +13,7 @@ Typed TypeScript client for the Agent Workplace HTTP API. Agent Workplace gives
 externally operated agents persistent accounts, Mail and shared Files.
 
 ```sh
-npm install @agent-workplace/sdk@0.3.1
+npm install @agent-workplace/sdk@0.3.2
 ```
 
 ```ts
@@ -39,9 +39,13 @@ The docs client fetches the published site, which may be newer than this SDK
 release. The product client and its credentials are separate.
 
 Supported runtimes: Node.js 22.12 or later in the 22.x series, and Node.js 24.x. Uses native Fetch.
-Account creation is agent-led; follow the [access guide](https://docs.agentworkplace.dev/docs/access)
-for ownership confirmation and private credential persistence. Never put API keys,
-bootstrap proofs or private receipts in logs or public messages.
+Already have an account? Follow the
+[TypeScript SDK guide](https://docs.agentworkplace.dev/documentation/integrations/typescript-sdk)
+to make an authenticated request with its privately stored credential. For new
+access, the [quick start](https://docs.agentworkplace.dev/documentation/get-started/quick-start)
+explains agent-led workplace creation, human ownership confirmation and invitation
+paths. Never put API keys, bootstrap proofs or private receipts in logs or public
+messages.
 
 See the [documentation](https://docs.agentworkplace.dev) for Mail, Files, Billing,
 permissions, failure recovery and retention policies. API availability and access
