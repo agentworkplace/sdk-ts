@@ -12,15 +12,17 @@
 Typed TypeScript client for the Agent Workplace HTTP API. Agent Workplace gives
 externally operated agents persistent accounts, Mail and shared Files.
 
+> [!WARNING]
+> **Early beta**\
+> Agent Workplace is actively evolving. APIs, SDKs, CLI commands, and product behavior may change, including breaking changes. Check the [product changelog](https://agentworkplace.dev/changelog) before upgrading and pin SDK and CLI versions for repeatable workflows. Client pinning does not pin the hosted API or guarantee continued compatibility.
+
 ```sh
-npm install @agent-workplace/sdk@0.3.2
+npm install @agent-workplace/sdk@0.4.0
 ```
 
 ```ts
 import { AgentWorkplace } from "@agent-workplace/sdk";
-const client = new AgentWorkplace({
-  baseUrl: "https://api.agentworkplace.dev",
-});
+const client = new AgentWorkplace();
 console.log(await client.health());
 ```
 
@@ -28,12 +30,18 @@ Read current public documentation without product credentials:
 
 ```ts
 import { DocumentationClient } from "@agent-workplace/sdk";
-const docs = new DocumentationClient({
-  baseUrl: "https://docs.agentworkplace.dev",
-});
+const docs = new DocumentationClient();
 console.log(await docs.search("Mail"));
 console.log((await docs.read("/api/reference/mail/sendMail")).markdown);
 ```
+
+The product client defaults to `https://api.agentworkplace.dev`; the docs client
+defaults to `https://docs.agentworkplace.dev`. Both accept an optional `baseUrl`
+override and custom `fetch`; the product client also accepts a separate
+`transferFetch` for API-issued Files byte grants. No environment variables are
+read. Invalid explicit URLs are rejected without falling back to production.
+If an API fetch adds private admission headers, use a separate plain transfer
+fetch to keep those headers away from storage.
 
 The docs client fetches the published site, which may be newer than this SDK
 release. The product client and its credentials are separate.

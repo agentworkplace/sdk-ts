@@ -1,4 +1,4 @@
-import { describe, expect, expectTypeOf, it, vi } from "vitest";
+import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import { AgentWorkplace, AgentWorkplaceError } from "../src/index.js";
 import type { AgentWorkplaceOptions, HealthResponse } from "../src/index.js";
@@ -12,6 +12,8 @@ function jsonResponse(body: unknown, status = 200): Response {
 
 const responseRequestId = "4f641382-6a56-41f5-b418-e20309e0b168";
 
+afterEach(() => vi.unstubAllGlobals());
+
 function jsonResponseWithRequestId(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -23,6 +25,117 @@ function jsonResponseWithRequestId(body: unknown, status = 200): Response {
 }
 
 describe("AgentWorkplace", () => {
+  it.each([
+    ["90", 90],
+    ["0", 0],
+    ["-1", undefined],
+    ["1.5", undefined],
+    ["NaN", undefined],
+    ["9007199254740992", undefined],
+  ])(
+    "exposes safe retry delay %s on response errors",
+    async (header, expected) => {
+      const client = new AgentWorkplace({
+        fetch: async () =>
+          new Response(
+            JSON.stringify({
+              error: { code: "rate_limited", message: "Wait" },
+            }),
+            { status: 429, headers: { "Retry-After": String(header) } },
+          ),
+      });
+      await expect(client.health()).rejects.toMatchObject({
+        status: 429,
+        retryAfterSeconds: expected,
+      });
+    },
+  );
+  it("exposes a Retry-After date on malformed error responses", async () => {
+    const now = Date.UTC(2026, 9, 1);
+    vi.spyOn(Date, "now").mockReturnValue(now);
+    try {
+      const client = new AgentWorkplace({
+        fetch: async () =>
+          new Response("unavailable", {
+            status: 503,
+            headers: { "Retry-After": new Date(now + 120_000).toUTCString() },
+          }),
+      });
+      await expect(client.health()).rejects.toMatchObject({
+        status: 503,
+        retryAfterSeconds: 120,
+      });
+    } finally {
+      vi.restoreAllMocks();
+    }
+  });
+
+  it.each([
+    { name: "no arguments", create: () => new AgentWorkplace() },
+    { name: "empty options", create: () => new AgentWorkplace({}) },
+    { name: "undefined options", create: () => new AgentWorkplace(undefined) },
+    {
+      name: "undefined baseUrl",
+      create: () => new AgentWorkplace({ baseUrl: undefined }),
+    },
+  ])("defaults to the production API with $name", async ({ create }) => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      jsonResponse({ status: "ok" }),
+    );
+    vi.stubGlobal("fetch", fetch);
+    const client = create();
+    expect(fetch).not.toHaveBeenCalled();
+    await expect(client.health()).resolves.toEqual({ status: "ok" });
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(
+      new URL("https://api.agentworkplace.dev/health"),
+      expect.objectContaining({ redirect: "error" }),
+    );
+  });
+
+  it("uses a custom fetch at the default origin without global Fetch", async () => {
+    vi.stubGlobal("fetch", undefined);
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      jsonResponse({ status: "ok" }),
+    );
+    const options = { fetch } satisfies AgentWorkplaceOptions;
+    await new AgentWorkplace(options).health();
+    expect(String(fetch.mock.calls[0]?.[0])).toBe(
+      "https://api.agentworkplace.dev/health",
+    );
+  });
+
+  it("preserves authenticated request protections at the default origin", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      jsonResponse(
+        { error: { code: "access_denied", message: "Denied" } },
+        403,
+      ),
+    );
+    await expect(
+      new AgentWorkplace({ fetch }).accessStatus("private-test-key"),
+    ).rejects.toMatchObject({ status: 403, code: "access_denied" });
+    const [url, init] = fetch.mock.calls[0] ?? [];
+    expect(String(url)).toBe("https://api.agentworkplace.dev/v1/access");
+    expect(init?.redirect).toBe("error");
+    const headers = new Headers(init?.headers);
+    expect(headers.get("Authorization")).toBe("Bearer private-test-key");
+    expect(headers.get("X-Request-ID")).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/,
+    );
+  });
+
+  it.each([null, "https://api.example.test", 1, [], true])(
+    "rejects invalid options %j before dispatch",
+    (options) => {
+      const fetch = vi.fn();
+      vi.stubGlobal("fetch", fetch);
+      expect(
+        () => new AgentWorkplace(options as unknown as AgentWorkplaceOptions),
+      ).toThrowError("options must be an object");
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
+
   it("does not bind Fetch to the SDK instance in browser runtimes", async () => {
     const client = new AgentWorkplace({
       baseUrl: "https://api.example.test",
@@ -44,13 +157,19 @@ describe("AgentWorkplace", () => {
 
   it.each([
     ["", "must not be empty"],
+    ["   ", "must not be empty"],
+    [null, "must not be empty"],
     ["relative/path", "must be an absolute URL"],
     ["ftp://api.example.com", "must use HTTP or HTTPS"],
     ["https://user:secret@api.example.com", "must not include credentials"],
     ["https://api.example.com?region=us", "must not include a query"],
     ["https://api.example.com#health", "must not include a fragment"],
   ])("rejects invalid base URL %s", (baseUrl, message) => {
-    expect(() => new AgentWorkplace({ baseUrl })).toThrowError(message);
+    const fetch = vi.fn();
+    expect(
+      () => new AgentWorkplace({ baseUrl: baseUrl as string, fetch }),
+    ).toThrowError(message);
+    expect(fetch).not.toHaveBeenCalled();
   });
 
   it("requests and validates health through a normalized base URL", async () => {
@@ -260,12 +379,19 @@ describe("AgentWorkplace", () => {
 
   it("preserves native fetch failures", async () => {
     const networkError = new TypeError("fetch failed");
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      Promise.reject(networkError),
+    );
     const client = new AgentWorkplace({
-      baseUrl: "https://api.example.com",
-      fetch: vi.fn(async () => Promise.reject(networkError)),
+      baseUrl: "https://staging-api.agentworkplace.dev",
+      fetch,
     });
 
     await expect(client.health()).rejects.toBe(networkError);
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(String(fetch.mock.calls[0]?.[0])).toBe(
+      "https://staging-api.agentworkplace.dev/health",
+    );
   });
 });
 

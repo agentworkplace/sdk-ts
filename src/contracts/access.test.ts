@@ -16,21 +16,31 @@ const request = {
   bootstrapProof: "a".repeat(43),
 };
 describe("access wire contracts", () => {
-  it("requires a nomination-scoped six-digit confirmation code", () => {
-    const input = {
-      nominationId: "1c9c6078-c31d-40a0-8452-43038dc056e9",
-      code: "001234",
-    };
+  it("requires a private high-entropy proof and explicit ownership consent", () => {
+    const input = { token: "a".repeat(43), acceptOwnership: true };
     expect(ownershipConfirmationRequestSchema.parse(input)).toEqual(input);
-    for (const code of ["12345", "1234567", "12a456", 123456, undefined])
+    for (const token of [
+      "123456",
+      "a".repeat(42),
+      "a".repeat(44),
+      123456,
+      undefined,
+    ])
       expect(
-        ownershipConfirmationRequestSchema.safeParse({ ...input, code })
+        ownershipConfirmationRequestSchema.safeParse({ ...input, token })
           .success,
+      ).toBe(false);
+    for (const acceptOwnership of [false, "true", undefined])
+      expect(
+        ownershipConfirmationRequestSchema.safeParse({
+          ...input,
+          acceptOwnership,
+        }).success,
       ).toBe(false);
     expect(
       ownershipConfirmationRequestSchema.safeParse({
         ...input,
-        email: "owner@example.test",
+        nominationId: "1c9c6078-c31d-40a0-8452-43038dc056e9",
       }).success,
     ).toBe(false);
   });

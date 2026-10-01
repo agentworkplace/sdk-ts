@@ -162,3 +162,154 @@ export const humanInvitationFileSchema = z
   })
   .strict();
 export type HumanInvitationFile = z.infer<typeof humanInvitationFileSchema>;
+
+/** Human-only preview never exposes intended email or terminal identity details. */
+export const humanInvitationPreviewSchema = z.union([
+  z
+    .object({
+      status: z.literal("pending"),
+      invitation: z
+        .object({
+          invitationId: z.uuid(),
+          workplaceId: z.uuid(),
+          accountId: z.uuid(),
+          workplaceName: z.string(),
+          name: z.string().min(1).max(100),
+          role: z.enum(["member", "admin"]),
+          expiresAt: z.iso.datetime(),
+        })
+        .strict(),
+    })
+    .strict(),
+  z
+    .object({ status: z.enum(["expired", "revoked", "used", "unavailable"]) })
+    .strict(),
+]);
+export type HumanInvitationPreview = z.infer<
+  typeof humanInvitationPreviewSchema
+>;
+
+export const humanInvitationAcceptancePath = "/invitations/accept";
+const linkFields = [
+  "v",
+  "origin",
+  "invitationId",
+  "workplaceId",
+  "accountId",
+  "code",
+] as const;
+const maximumInvitationFragmentBytes = 4096;
+
+function linkOrigin(value: string): string {
+  const url = new URL(value);
+  if (
+    url.origin !== value ||
+    url.username ||
+    url.password ||
+    (url.protocol !== "https:" &&
+      !(
+        url.protocol === "http:" &&
+        ["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)
+      ))
+  )
+    throw new Error("Invalid origin");
+  return url.origin;
+}
+
+/** Serialize the private wire handoff; never select a network destination from it. */
+export function createHumanInvitationLink(
+  record: HumanInvitationFile,
+  options: { dashboardOrigin: string },
+): string {
+  try {
+    const parsed = humanInvitationFileSchema.parse(record);
+    linkOrigin(parsed.origin);
+    const target = linkOrigin(options.dashboardOrigin);
+    const fragment = new URLSearchParams({
+      v: "1",
+      origin: parsed.origin,
+      invitationId: parsed.invitationId,
+      workplaceId: parsed.workplaceId,
+      accountId: parsed.accountId,
+      code: parsed.code,
+    }).toString();
+    if (
+      new TextEncoder().encode(fragment).byteLength >
+      maximumInvitationFragmentBytes
+    )
+      throw new Error("Invalid size");
+    return `${target}${humanInvitationAcceptancePath}#${fragment}`;
+  } catch {
+    // Validation errors can contain the proof. Only this fixed message is public.
+    throw new TypeError("Invalid human invitation link");
+  }
+}
+
+/** Decode once and bind to caller-owned origins before exposing a usable proof. */
+export function parseHumanInvitationLink(
+  value: string,
+  options: { dashboardOrigin: string; apiOrigin: string },
+): HumanInvitationFile {
+  try {
+    const target = linkOrigin(options.dashboardOrigin);
+    const apiOrigin = linkOrigin(options.apiOrigin);
+    const url = new URL(value);
+    if (
+      url.origin !== target ||
+      url.username ||
+      url.password ||
+      url.search ||
+      url.pathname !== humanInvitationAcceptancePath
+    )
+      throw new Error("Invalid destination");
+    const raw = url.hash.slice(1);
+    if (
+      !raw ||
+      new TextEncoder().encode(raw).byteLength > maximumInvitationFragmentBytes
+    )
+      throw new Error("Invalid size");
+    // URLSearchParams tolerates invalid escapes/UTF-8; reject those explicitly.
+    for (const part of raw.split("&")) {
+      for (const segment of part.split("="))
+        decodeURIComponent(segment.replace(/\+/g, " "));
+    }
+    const fields = new URLSearchParams(raw);
+    if (
+      fields.size !== linkFields.length ||
+      linkFields.some((key) => fields.getAll(key).length !== 1) ||
+      fields.get("v") !== "1"
+    )
+      throw new Error("Invalid fields");
+    const record = humanInvitationFileSchema.parse({
+      version: 1,
+      kind: "human-invitation",
+      origin: fields.get("origin"),
+      invitationId: fields.get("invitationId"),
+      workplaceId: fields.get("workplaceId"),
+      accountId: fields.get("accountId"),
+      code: fields.get("code"),
+    });
+    if (record.origin !== apiOrigin) throw new Error("Invalid origin");
+    return record;
+  } catch {
+    throw new TypeError("Invalid human invitation link");
+  }
+}
+
+/** Administrator projection; no provider identity, recipient, or bearer material. */
+export const invitationNotificationStatusSchema = z
+  .object({
+    status: z.enum([
+      "queued",
+      "retrying",
+      "accepted",
+      "failed",
+      "expired",
+      "suppressed",
+      "not_scheduled",
+    ]),
+  })
+  .strict();
+export type InvitationNotificationStatus = z.infer<
+  typeof invitationNotificationStatusSchema
+>;

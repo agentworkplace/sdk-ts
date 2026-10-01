@@ -14,6 +14,51 @@ const operation = {
 };
 
 describe("owner email transport", () => {
+  it("discovers the owner's operation through an authenticated read", async () => {
+    const response = {
+      operation: {
+        ...operation,
+        receiptProof,
+        newEmail: "new@example.test",
+        confirmation: null,
+      },
+    };
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(Response.json(response));
+    const client = new AgentWorkplace({
+      baseUrl: "https://api.example.test",
+      fetch,
+    });
+    expect(await client.currentOwnerEmailChange()).toEqual(response);
+    const [url, request] = fetch.mock.calls[0]!;
+    expect(new URL(url.toString()).pathname).toBe(
+      "/v1/access/email-change/current",
+    );
+    expect(request?.credentials).toBe("include");
+    expect(request?.body).toBeUndefined();
+    expect(request?.redirect).toBe("error");
+    expect(new Headers(request?.headers).has("Authorization")).toBe(false);
+  });
+
+  it("rejects an invalid proof returned by discovery", async () => {
+    const client = new AgentWorkplace({
+      baseUrl: "https://api.example.test",
+      fetch: vi.fn().mockResolvedValue(
+        Response.json({
+          operation: {
+            ...operation,
+            receiptProof: "short",
+            newEmail: "new@example.test",
+          },
+        }),
+      ),
+    });
+    await expect(client.currentOwnerEmailChange()).rejects.toThrow(
+      "invalid response",
+    );
+  });
+
   it("uses browser sessions for mutations and explicitly omits cookies for receipt recovery", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
@@ -146,4 +191,39 @@ describe("owner email transport", () => {
     ).rejects.toThrow("HTTPS");
     expect(fetch).not.toHaveBeenCalled();
   });
+});
+
+it("opts into confirmation views without changing default receipt responses", async () => {
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockImplementation(async (url) =>
+      Response.json(
+        url.toString().includes("email-change")
+          ? { operation: { ...operation, confirmation: "failed" } }
+          : {
+              state: "deleted",
+              initiatedAt: operation.createdAt,
+              receiptExpiresAt: operation.receiptExpiresAt,
+              confirmation: "uncertain",
+            },
+      ),
+    );
+  const client = new AgentWorkplace({
+    baseUrl: "https://api.example.test",
+    fetch,
+  });
+  expect(
+    (await client.ownerEmailChangeStatusView(receiptProof)).operation
+      ?.confirmation,
+  ).toBe("failed");
+  expect(
+    (await client.workplaceDeletionStatusView(receiptProof)).confirmation,
+  ).toBe("uncertain");
+  for (const [, request] of fetch.mock.calls) {
+    expect(JSON.parse(request!.body as string)).toEqual({
+      receiptProof,
+      includeConfirmation: true,
+    });
+    expect(request?.credentials).toBe("omit");
+  }
 });

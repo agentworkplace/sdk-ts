@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import type { DocumentationClientOptions } from "../src/index.js";
 import {
   DocumentationClient,
   DocumentationError,
@@ -17,6 +18,7 @@ const operation = {
   group: ["API Reference", "Endpoints", "Access"],
 };
 const index = { schemaVersion: 1, pages: [page, operation] };
+afterEach(() => vi.unstubAllGlobals());
 function json(value: unknown, status = 200) {
   return new Response(JSON.stringify(value), {
     status,
@@ -44,6 +46,108 @@ async function code(action: () => Promise<unknown>, expected: string) {
 }
 
 describe("DocumentationClient", () => {
+  it.each([
+    { name: "no arguments", create: () => new DocumentationClient() },
+    { name: "empty options", create: () => new DocumentationClient({}) },
+    {
+      name: "undefined options",
+      create: () => new DocumentationClient(undefined),
+    },
+    {
+      name: "undefined baseUrl",
+      create: () => new DocumentationClient({ baseUrl: undefined }),
+    },
+  ])("defaults to the public docs with $name", async ({ create }) => {
+    const transport = vi.fn<typeof fetch>(async () => json(index));
+    vi.stubGlobal("fetch", transport);
+    const docs = create();
+    expect(transport).not.toHaveBeenCalled();
+    expect(await docs.list()).toEqual(index.pages);
+    expect(transport).toHaveBeenCalledExactlyOnceWith(
+      "https://docs.agentworkplace.dev/docs-index.json",
+      expect.objectContaining({
+        headers: { Accept: "application/json" },
+        credentials: "omit",
+        redirect: "manual",
+        referrerPolicy: "no-referrer",
+      }),
+    );
+  });
+
+  it("uses a custom fetch at the default origin without global Fetch", async () => {
+    vi.stubGlobal("fetch", undefined);
+    const transport = vi.fn<typeof fetch>(async () => json(index));
+    const options = { fetch: transport } satisfies DocumentationClientOptions;
+    expect(await new DocumentationClient(options).list()).toEqual(index.pages);
+    expect(transport.mock.calls[0]?.[0]).toBe(
+      "https://docs.agentworkplace.dev/docs-index.json",
+    );
+  });
+
+  it("does not fall back to production when an explicit origin is unavailable", async () => {
+    const transport = vi.fn<typeof fetch>(async () => {
+      throw new TypeError("fetch failed");
+    });
+    const docs = new DocumentationClient({
+      baseUrl: "https://staging-docs.agentworkplace.dev",
+      fetch: transport,
+    });
+    await code(() => docs.list(), "network_error");
+    expect(transport).toHaveBeenCalledOnce();
+    expect(transport.mock.calls[0]?.[0]).toBe(
+      "https://staging-docs.agentworkplace.dev/docs-index.json",
+    );
+  });
+
+  it.each([
+    "https://staging-docs.agentworkplace.dev",
+    "http://localhost:3002",
+    "http://127.0.0.1:3002",
+    "http://[::1]:3002",
+    "http://docs.example.test",
+  ])("preserves the explicit documentation origin %s", async (baseUrl) => {
+    const transport = vi.fn<typeof fetch>(async () => json(index));
+    await new DocumentationClient({ baseUrl, fetch: transport }).list();
+    expect(transport.mock.calls[0]?.[0]).toBe(`${baseUrl}/docs-index.json`);
+  });
+
+  it.each([
+    "",
+    "   ",
+    null,
+    "relative/path",
+    "ftp://docs.example.test",
+    "https://user:secret@docs.example.test",
+    "https://docs.example.test/docs",
+    "https://docs.example.test?query=private",
+    "https://docs.example.test#section",
+  ])("rejects invalid explicit origin %s before dispatch", (baseUrl) => {
+    const transport = vi.fn<typeof fetch>();
+    expect(
+      () =>
+        new DocumentationClient({
+          baseUrl: baseUrl as string,
+          fetch: transport,
+        }),
+    ).toThrow(TypeError);
+    expect(transport).not.toHaveBeenCalled();
+  });
+
+  it.each([null, "https://docs.example.test", 1, [], true])(
+    "rejects invalid options %j before dispatch",
+    (options) => {
+      const transport = vi.fn();
+      vi.stubGlobal("fetch", transport);
+      expect(
+        () =>
+          new DocumentationClient(
+            options as unknown as DocumentationClientOptions,
+          ),
+      ).toThrowError("options must be an object");
+      expect(transport).not.toHaveBeenCalled();
+    },
+  );
+
   it("lists and searches without product authorization or credentials", async () => {
     const transport = vi.fn(async (url: string | URL | Request) =>
       String(url).includes("docs-index.json")

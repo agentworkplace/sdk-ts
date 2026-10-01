@@ -1,4 +1,4 @@
-import { expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
 import {
   AgentWorkplace,
   prepareFileUpload,
@@ -26,6 +26,7 @@ const emptyUploadedParts = () =>
     },
     presentPartNumbers: [],
   });
+afterEach(() => vi.unstubAllGlobals());
 it("prepares fixed slot manifests and stable pinned references", () => {
   const request = prepareFileUpload(base, new TextEncoder().encode("abc"));
   expect(request.contentMd5).toBe("kAFQmDzST7DWlj99KOF/cg==");
@@ -184,10 +185,22 @@ it.each(
     "http://127.0.0.1:9000/object",
     "http://[::1]:9000/object",
     "http://localhost:9000/object",
-  ].flatMap((url) => [false, true].map((separate) => ({ url, separate }))),
+  ].flatMap((url) =>
+    [false, true].flatMap((separate) =>
+      ["explicit", "default", "global"].map((origin) => ({
+        url,
+        separate,
+        origin,
+      })),
+    ),
+  ),
 )(
-  "secure transfers $url with separate transport=$separate",
-  async ({ url, separate }) => {
+  "secure transfers $url with separate transport=$separate and origin=$origin",
+  async ({ url, separate, origin }) => {
+    const apiOrigin =
+      origin === "explicit"
+        ? "https://api.test"
+        : "https://api.agentworkplace.dev";
     const bytes = new TextEncoder().encode("abc"),
       prepared = prepareFileUpload(base, bytes);
     let transfers = 0;
@@ -223,42 +236,46 @@ it.each(
         expect(req.headers.has(header)).toBe(false);
       return new Response("abc");
     };
-    const client = new AgentWorkplace({
-      baseUrl: "https://api.test",
-      ...(separate ? { transferFetch: transfer } : {}),
-      fetch: async (input, init) => {
-        const req = new Request(input, init);
-        if (new URL(req.url).pathname.endsWith("/parts"))
-          return emptyUploadedParts();
-        if (new URL(req.url).hostname !== "api.test") {
-          expect(separate).toBe(false);
-          return transfer(input, init);
-        }
-        expect(req.headers.get("authorization")).toBe("Bearer private");
-        if (req.url.endsWith("/uploads"))
-          return Response.json({
-            state: "pending",
-            transferState: "open",
-            uploadId: revisionId,
-            fileId,
-            revisionId,
-            version: null,
-          });
-        if (new URL(req.url).pathname.endsWith("/finalize"))
-          return Response.json({
-            state: "published",
-            uploadId: revisionId,
-            fileId,
-            revisionId,
-            version: revisionId,
-          });
+    const apiFetch: typeof fetch = async (input, init) => {
+      const req = new Request(input, init);
+      if (new URL(req.url).pathname.endsWith("/parts"))
+        return emptyUploadedParts();
+      if (new URL(req.url).origin !== apiOrigin) {
+        expect(separate).toBe(false);
+        return transfer(input, init);
+      }
+      expect(req.headers.get("authorization")).toBe("Bearer private");
+      expect(req.redirect).toBe("error");
+      expect(req.headers.get("x-request-id")).toMatch(/^[0-9a-f-]{36}$/);
+      if (req.url.endsWith("/uploads"))
         return Response.json({
-          url,
-          headers: {},
-          file,
-          expiresAt: "2026-09-16T00:01:00.000Z",
+          state: "pending",
+          transferState: "open",
+          uploadId: revisionId,
+          fileId,
+          revisionId,
+          version: null,
         });
-      },
+      if (new URL(req.url).pathname.endsWith("/finalize"))
+        return Response.json({
+          state: "published",
+          uploadId: revisionId,
+          fileId,
+          revisionId,
+          version: revisionId,
+        });
+      return Response.json({
+        url,
+        headers: {},
+        file,
+        expiresAt: "2026-09-16T00:01:00.000Z",
+      });
+    };
+    vi.stubGlobal("fetch", apiFetch);
+    const client = new AgentWorkplace({
+      ...(origin === "explicit" ? { baseUrl: apiOrigin } : {}),
+      ...(separate ? { transferFetch: transfer } : {}),
+      ...(origin === "global" ? {} : { fetch: apiFetch }),
     });
     expect(
       (await client.uploadFile({ apiKey: "private" }, prepared, bytes)).state,

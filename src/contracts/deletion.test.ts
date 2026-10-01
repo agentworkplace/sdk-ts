@@ -3,6 +3,7 @@ import {
   deletionConfirmationSchema,
   deletionProofSchema,
   deletionStatusSchema,
+  deletionStatusViewSchema,
 } from "./access.js";
 describe("deletion evidence contracts", () => {
   it("requires an operation-bound six-digit code and private proof", () => {
@@ -32,4 +33,25 @@ describe("deletion evidence contracts", () => {
         .success,
     ).toBe(false);
   });
+});
+
+it("only the opt-in view includes bounded confirmation status", () => {
+  const status = {
+    state: "deleted",
+    initiatedAt: "2026-09-12T00:00:00Z",
+    receiptExpiresAt: "2026-10-12T00:00:00Z",
+    confirmation: "uncertain",
+  };
+  expect(deletionStatusViewSchema.safeParse(status).success).toBe(true);
+  expect(deletionStatusSchema.safeParse(status).success).toBe(false);
+  expect(
+    deletionStatusViewSchema.safeParse({ ...status, confirmation: "delivered" })
+      .success,
+  ).toBe(false);
+  expect(
+    deletionStatusViewSchema.safeParse({
+      ...status,
+      recipient: "private@example.test",
+    }).success,
+  ).toBe(false);
 });
