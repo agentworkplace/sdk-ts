@@ -192,9 +192,9 @@ const accessOperations = [
   [
     "confirmation",
     (client: AgentWorkplace) =>
-      client.confirmOwnership("private-test-key", {
-        nominationId: keyId,
-        code: "012345",
+      client.acceptOwnership({
+        token: "a".repeat(43),
+        acceptOwnership: true,
       }),
   ],
   [
@@ -250,29 +250,33 @@ describe.each(accessOperations)("%s transport security", (_name, operation) => {
     "http://[::1]:3003",
   ])("preserves %s and rejects redirects", async (baseUrl) => {
     const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
-      Response.json({
-        accountId,
-        workplaceId,
-        cleanupAt: "2026-10-11T00:00:00Z",
-        credential: { id: keyId, key: "private-test-key" },
-        acknowledged: true,
-        canceled: true,
-        confirmed: true,
-        nominationId: keyId,
-        state: "queued",
-        role: "admin",
-        workplaceState: "unconfirmed",
-        nomination: null,
-        free: null,
-        starter: {
-          outboundLimit: 2,
-          inboundLimit: 20,
-          storageLimit: "100 MB",
-          outboundUsed: 0,
-          inboundUsed: 0,
-          storageUsedBytes: 0,
-        },
-      }),
+      Response.json(
+        _name === "confirmation"
+          ? { state: "confirmed" }
+          : {
+              accountId,
+              workplaceId,
+              cleanupAt: "2026-10-11T00:00:00Z",
+              credential: { id: keyId, key: "private-test-key" },
+              acknowledged: true,
+              canceled: true,
+              confirmed: true,
+              nominationId: keyId,
+              state: "queued",
+              role: "admin",
+              workplaceState: "unconfirmed",
+              nomination: null,
+              free: null,
+              starter: {
+                outboundLimit: 2,
+                inboundLimit: 20,
+                storageLimit: "100 MB",
+                outboundUsed: 0,
+                inboundUsed: 0,
+                storageUsedBytes: 0,
+              },
+            },
+      ),
     );
     await operation(new AgentWorkplace({ baseUrl, fetch }));
     expect(fetch).toHaveBeenCalledTimes(1);

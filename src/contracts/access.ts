@@ -146,18 +146,49 @@ export type NominationCancellationResponse = z.infer<
   typeof nominationCancellationResponseSchema
 >;
 
-export const ownershipConfirmationRequestSchema = z
+export const ownershipPreviewRequestSchema = z
   .object({
-    nominationId: z.uuid(),
-    code: z.string().regex(/^\d{6}$/),
-    ownerMailboxAddressChoice: mailboxAddressChoiceSchema.optional(),
+    token: z.string().regex(/^[A-Za-z0-9_-]{43}$/),
   })
   .strict();
-export const ownershipConfirmationResponseSchema = z.object({
-  ownerMailbox: mailboxSchema.optional(),
-  confirmed: z.literal(true),
-  workplaceId: z.uuid(),
-});
+export const ownershipPreviewResponseSchema = z.discriminatedUnion("state", [
+  z.object({ state: z.literal("confirmed") }).strict(),
+  z
+    .object({
+      state: z.literal("pending"),
+      workplaceId: z.uuid(),
+      workplaceName: z.string(),
+      agentId: z.uuid(),
+      agentName: z.string(),
+      nominatedEmail: z.email(),
+      expiresAt: z.iso.datetime(),
+    })
+    .strict(),
+]);
+export const ownershipConfirmationRequestSchema =
+  ownershipPreviewRequestSchema.extend({
+    acceptOwnership: z.literal(true),
+    ownerMailboxAddressChoice: mailboxAddressChoiceSchema.optional(),
+  });
+export const ownershipConfirmationResponseSchema = z.discriminatedUnion(
+  "state",
+  [
+    z.object({ state: z.literal("confirmed") }).strict(),
+    z
+      .object({
+        state: z.literal("accepted"),
+        workplaceId: z.uuid(),
+        ownerMailbox: mailboxSchema,
+      })
+      .strict(),
+  ],
+);
+export type OwnershipPreviewRequest = z.infer<
+  typeof ownershipPreviewRequestSchema
+>;
+export type OwnershipPreviewResponse = z.infer<
+  typeof ownershipPreviewResponseSchema
+>;
 export type OwnershipConfirmationRequest = z.infer<
   typeof ownershipConfirmationRequestSchema
 >;
@@ -193,6 +224,16 @@ export const deletionStatusSchema = z
   })
   .strict();
 export type DeletionStatus = z.infer<typeof deletionStatusSchema>;
+export const confirmationDeliverySchema = z
+  .enum(["pending", "accepted", "failed", "uncertain"])
+  .nullable();
+export const deletionStatusRequestSchema = deletionProofSchema.extend({
+  includeConfirmation: z.boolean().optional(),
+});
+export const deletionStatusViewSchema = deletionStatusSchema.extend({
+  confirmation: confirmationDeliverySchema,
+});
+export type DeletionStatusView = z.infer<typeof deletionStatusViewSchema>;
 
 /** Current admitted account, independent of creator enrollment and private profiles. */
 const accountIdentitySchema = z.object({
@@ -268,6 +309,32 @@ export const ownerEmailOperationSchema = z
 export const ownerEmailStatusSchema = z
   .object({ operation: ownerEmailOperationSchema.nullable() })
   .strict();
+export const ownerEmailCurrentSchema = z
+  .object({
+    operation: ownerEmailOperationSchema
+      .extend({
+        confirmation: confirmationDeliverySchema,
+        newEmail: signupRequestSchema.shape.nominatedEmail.nullable(),
+        receiptProof: ownerEmailReceiptSchema.shape.receiptProof.nullable(),
+      })
+      .nullable(),
+  })
+  .strict();
+export type OwnerEmailCurrent = z.infer<typeof ownerEmailCurrentSchema>;
+export const ownerEmailStatusRequestSchema = ownerEmailReceiptSchema.extend({
+  includeConfirmation: z.boolean().optional(),
+});
+export const ownerEmailOperationViewSchema = ownerEmailOperationSchema.extend({
+  confirmation: confirmationDeliverySchema,
+});
+export const ownerEmailStatusViewSchema = z
+  .object({
+    operation: ownerEmailOperationViewSchema.nullable(),
+  })
+  .strict();
+export type OwnerEmailOperationView = z.infer<
+  typeof ownerEmailOperationViewSchema
+>;
 export type OwnerEmailOperation = z.infer<typeof ownerEmailOperationSchema>;
 export type OwnerEmailBegin = z.infer<typeof ownerEmailBeginSchema>;
 export type OwnerEmailCode = z.infer<typeof ownerEmailCodeSchema>;

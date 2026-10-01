@@ -41,6 +41,80 @@ const admission = {
 };
 
 describe("invitation SDK transport", () => {
+  it.each([
+    "queued",
+    "retrying",
+    "accepted",
+    "failed",
+    "expired",
+    "suppressed",
+    "not_scheduled",
+  ])("reads administrator notification status %s", async (status) => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(Response.json({ status }));
+    const client = new AgentWorkplace({
+      baseUrl: "https://api.example.test",
+      fetch,
+    });
+    expect(
+      await client.getInvitationNotificationStatus(
+        { humanSession: true },
+        invitation.id,
+      ),
+    ).toEqual({ status });
+    expect(String(fetch.mock.calls[0]![0])).toBe(
+      `https://api.example.test/v1/invitations/${invitation.id}/notification`,
+    );
+    expect(fetch.mock.calls[0]![1]).toMatchObject({
+      credentials: "include",
+      method: "GET",
+    });
+  });
+  it("rejects provider data in the notification projection", async () => {
+    const client = new AgentWorkplace({
+      fetch: async () =>
+        Response.json({ status: "accepted", providerId: "private" }),
+    });
+    await expect(
+      client.getInvitationNotificationStatus(
+        { apiKey: "test-key" },
+        invitation.id,
+      ),
+    ).rejects.toBeInstanceOf(AgentWorkplaceError);
+  });
+
+  it.each(["expired", "revoked", "used", "unavailable"])(
+    "inspects human %s status without sending account credentials or URL secrets",
+    async (status) => {
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(Response.json({ status }));
+      const client = new AgentWorkplace({
+        baseUrl: "https://api.example.test",
+        fetch,
+      });
+      const input = { invitationId: invitation.id, code };
+      expect(await client.previewHumanInvitation(input)).toEqual({ status });
+      const [url, init] = fetch.mock.calls[0]!;
+      expect(String(url)).toBe(
+        "https://api.example.test/v1/invitations/human/preview",
+      );
+      expect(init).toMatchObject({ method: "POST", redirect: "error" });
+      expect(new Headers(init!.headers).has("Authorization")).toBe(false);
+      expect(JSON.parse(init!.body as string)).toEqual(input);
+    },
+  );
+  it("rejects terminal metadata instead of exposing an expanded response", async () => {
+    const client = new AgentWorkplace({
+      baseUrl: "https://api.example.test",
+      fetch: async () =>
+        Response.json({ status: "used", email: "private@example.test" }),
+    });
+    await expect(
+      client.previewHumanInvitation({ invitationId: invitation.id, code }),
+    ).rejects.toBeInstanceOf(AgentWorkplaceError);
+  });
   it("issues human invitations with admin authority and accepts with cookie-only human requests", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()

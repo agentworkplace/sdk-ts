@@ -4,6 +4,14 @@ export type {
   CredentialAuthorization,
 } from "./client.js";
 export { AgentWorkplaceError } from "./errors.js";
+export {
+  createHumanInvitationLink,
+  parseHumanInvitationLink,
+} from "./contracts/invitations.js";
+export type {
+  HumanInvitationPreview,
+  InvitationNotificationStatus,
+} from "./contracts/invitations.js";
 export { DocumentationClient, DocumentationError } from "./documentation.js";
 export type {
   DocumentationClientOptions,
@@ -22,6 +30,9 @@ export type {
 
 export type {
   OwnerEmailOperation,
+  OwnerEmailCurrent,
+  OwnerEmailOperationView,
+  DeletionStatusView,
   OwnerEmailBegin,
   OwnerEmailCode,
   OwnerEmailResend,
@@ -29,6 +40,8 @@ export type {
   SignupRequest,
   DeletionStatus,
   OwnershipConfirmationRequest,
+  OwnershipPreviewRequest,
+  OwnershipPreviewResponse,
   OwnershipConfirmationResponse,
   SignupResponse,
   AcknowledgementResponse,

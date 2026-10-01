@@ -56,7 +56,8 @@ export class DocumentationError extends Error {
 }
 
 export interface DocumentationClientOptions {
-  baseUrl: string;
+  /** Documentation origin; defaults to https://docs.agentworkplace.dev. */
+  baseUrl?: string;
   fetch?: typeof fetch;
 }
 
@@ -124,8 +125,18 @@ export class DocumentationClient {
   private readonly origin: string;
   private readonly transport: typeof fetch;
 
-  constructor(options: DocumentationClientOptions) {
-    const url = new URL(options.baseUrl);
+  constructor(options: DocumentationClientOptions = {}) {
+    if (
+      typeof options !== "object" ||
+      options === null ||
+      Array.isArray(options)
+    )
+      throw new TypeError("Documentation options must be an object");
+    const url = new URL(
+      options.baseUrl === undefined
+        ? "https://docs.agentworkplace.dev"
+        : options.baseUrl,
+    );
     if (
       !["http:", "https:"].includes(url.protocol) ||
       url.username ||

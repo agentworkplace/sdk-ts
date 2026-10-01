@@ -87,7 +87,9 @@ import {
   type HumanInvitationCodeRequest,
   type HumanInvitationAcceptRequest,
   invitationListSchema,
+  invitationNotificationStatusSchema,
   invitationPreviewSchema,
+  humanInvitationPreviewSchema,
   invitationAdmissionSchema,
   invitationCanceledSchema,
   type CreateAgentInvitationRequest,
@@ -135,6 +137,8 @@ import {
 import {
   ownerEmailOperationSchema,
   ownerEmailStatusSchema,
+  ownerEmailCurrentSchema,
+  ownerEmailStatusViewSchema,
   type OwnerEmailBegin,
   type OwnerEmailCode,
   type OwnerEmailResend,
@@ -142,6 +146,7 @@ import {
   signupResponseSchema,
   deletionRequestResponseSchema,
   deletionStatusSchema,
+  deletionStatusViewSchema,
   acknowledgementResponseSchema,
   accessStatusSchema,
   accountAccessStatusSchema,
@@ -154,6 +159,8 @@ import {
   type NominationCorrectionRequest,
   type SignupRequest,
   type OwnershipConfirmationRequest,
+  type OwnershipPreviewRequest,
+  ownershipPreviewResponseSchema,
   ownershipConfirmationResponseSchema,
   humanAccessStatusSchema,
 } from "./contracts/access.js";
@@ -169,7 +176,8 @@ import type { HealthResponse } from "./contracts/health.js";
 import { AgentWorkplaceError } from "./errors.js";
 
 export interface AgentWorkplaceOptions {
-  baseUrl: string;
+  /** API base URL; defaults to https://api.agentworkplace.dev. */
+  baseUrl?: string;
   fetch?: typeof globalThis.fetch;
   /** Fetch for API-issued Files byte grants; defaults to the configured fetch.
    * Use a separate transport when API admission adds private headers. */
@@ -184,6 +192,24 @@ type ResponseParser<T> = (value: unknown) => T;
 const requestIdHeader = "X-Request-ID";
 const uuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+
+function responseRetryAfter(response: Response): number | undefined {
+  const value = response.headers.get("Retry-After");
+  if (!value) return;
+  if (/^\d+$/.test(value)) {
+    const seconds = Number(value);
+    return Number.isSafeInteger(seconds) ? seconds : undefined;
+  }
+  if (
+    /^[A-Z][a-z]{2}, \d{2} [A-Z][a-z]{2} \d{4} \d{2}:\d{2}:\d{2} GMT$/.test(
+      value,
+    )
+  ) {
+    const deadline = Date.parse(value);
+    if (Number.isFinite(deadline))
+      return Math.max(0, Math.ceil((deadline - Date.now()) / 1000));
+  }
+}
 
 function responseRequestId(response: Response): string | undefined {
   const value = response.headers.get(requestIdHeader);
@@ -258,12 +284,20 @@ export class AgentWorkplace {
   readonly #fetch: typeof globalThis.fetch;
   readonly #transferFetch: typeof globalThis.fetch;
 
-  constructor(options: AgentWorkplaceOptions) {
-    if (typeof options !== "object" || options === null) {
-      throw new TypeError("Agent Workplace options are required");
+  constructor(options: AgentWorkplaceOptions = {}) {
+    if (
+      typeof options !== "object" ||
+      options === null ||
+      Array.isArray(options)
+    ) {
+      throw new TypeError("Agent Workplace options must be an object");
     }
 
-    this.#baseUrl = normalizeBaseUrl(options.baseUrl);
+    this.#baseUrl = normalizeBaseUrl(
+      options.baseUrl === undefined
+        ? "https://api.agentworkplace.dev"
+        : options.baseUrl,
+    );
 
     const fetchImplementation = options.fetch ?? globalThis.fetch;
 
@@ -332,6 +366,16 @@ export class AgentWorkplace {
       },
     );
   }
+  previewHumanInvitation(input: InvitationPreviewRequest) {
+    return this.#request(
+      "v1/invitations/human/preview",
+      (value) => humanInvitationPreviewSchema.parse(value),
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    );
+  }
   requestHumanInvitationCode(input: HumanInvitationCodeRequest) {
     return this.#request(
       "v1/invitations/human/code",
@@ -364,6 +408,16 @@ export class AgentWorkplace {
     return this.#request(
       `v1/invitations${query.size ? `?${query}` : ""}`,
       (value) => invitationListSchema.parse(value),
+      this.#credentialAuthorization(authorization),
+    );
+  }
+  getInvitationNotificationStatus(
+    authorization: CredentialAuthorization,
+    invitationId: string,
+  ) {
+    return this.#request(
+      `v1/invitations/${encodeURIComponent(invitationId)}/notification`,
+      (value) => invitationNotificationStatusSchema.parse(value),
       this.#credentialAuthorization(authorization),
     );
   }
@@ -1503,13 +1557,25 @@ export class AgentWorkplace {
     );
   }
 
-  confirmOwnership(apiKey: string, input: OwnershipConfirmationRequest) {
+  previewOwnership(input: OwnershipPreviewRequest) {
     return this.#request(
-      "v1/access/nomination/confirm",
+      "v1/access/ownership/preview",
+      (value) => ownershipPreviewResponseSchema.parse(value),
+      {
+        method: "POST",
+        credentials: "include",
+        body: JSON.stringify(input),
+      },
+    );
+  }
+
+  acceptOwnership(input: OwnershipConfirmationRequest) {
+    return this.#request(
+      "v1/access/ownership/confirm",
       (value) => ownershipConfirmationResponseSchema.parse(value),
       {
         method: "POST",
-        apiKey,
+        credentials: "include",
         body: JSON.stringify(input),
       },
     );
@@ -1520,6 +1586,26 @@ export class AgentWorkplace {
       "v1/access/email-change/begin",
       (value) => ownerEmailOperationSchema.parse(value),
       { method: "POST", credentials: "include", body: JSON.stringify(input) },
+    );
+  }
+
+  ownerEmailChangeStatusView(receiptProof: string) {
+    return this.#request(
+      "v1/access/email-change/status",
+      (value) => ownerEmailStatusViewSchema.parse(value),
+      {
+        method: "POST",
+        credentials: "omit",
+        body: JSON.stringify({ receiptProof, includeConfirmation: true }),
+      },
+    );
+  }
+
+  currentOwnerEmailChange() {
+    return this.#request(
+      "v1/access/email-change/current",
+      (value) => ownerEmailCurrentSchema.parse(value),
+      { credentials: "include" },
     );
   }
 
@@ -1593,6 +1679,18 @@ export class AgentWorkplace {
       },
     );
   }
+  workplaceDeletionStatusView(receiptProof: string) {
+    return this.#request(
+      "v1/access/deletion/status",
+      (value) => deletionStatusViewSchema.parse(value),
+      {
+        method: "POST",
+        credentials: "omit",
+        body: JSON.stringify({ receiptProof, includeConfirmation: true }),
+      },
+    );
+  }
+
   workplaceDeletionStatus(receiptProof: string) {
     return this.#request(
       "v1/access/deletion/status",
@@ -1899,6 +1997,7 @@ export class AgentWorkplace {
       },
     );
     const returnedRequestId = responseRequestId(response);
+    const retryAfterSeconds = responseRetryAfter(response);
 
     let body: unknown;
 
@@ -1908,13 +2007,22 @@ export class AgentWorkplace {
       if (!response.ok) {
         throw new AgentWorkplaceError(
           `Request failed with status ${response.status}`,
-          { status: response.status, requestId: returnedRequestId },
+          {
+            status: response.status,
+            retryAfterSeconds,
+            requestId: returnedRequestId,
+          },
         );
       }
 
       throw new AgentWorkplaceError(
         "The Agent Workplace API returned invalid JSON",
-        { status: response.status, cause, requestId: returnedRequestId },
+        {
+          status: response.status,
+          cause,
+          retryAfterSeconds,
+          requestId: returnedRequestId,
+        },
       );
     }
 
@@ -1926,13 +2034,18 @@ export class AgentWorkplace {
           status: response.status,
           code: apiError.data.error.code,
           choiceRevision: apiError.data.error.choiceRevision,
+          retryAfterSeconds,
           requestId: returnedRequestId,
         });
       }
 
       throw new AgentWorkplaceError(
         `Request failed with status ${response.status}`,
-        { status: response.status, requestId: returnedRequestId },
+        {
+          status: response.status,
+          retryAfterSeconds,
+          requestId: returnedRequestId,
+        },
       );
     }
 
@@ -1941,7 +2054,12 @@ export class AgentWorkplace {
     } catch (cause) {
       throw new AgentWorkplaceError(
         "The Agent Workplace API returned an invalid response",
-        { status: response.status, cause, requestId: returnedRequestId },
+        {
+          status: response.status,
+          cause,
+          retryAfterSeconds,
+          requestId: returnedRequestId,
+        },
       );
     }
   }
