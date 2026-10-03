@@ -1,5 +1,11 @@
 # @agent-workplace/sdk
 
+## 0.4.1
+
+### Patch Changes
+
+- Document API error handling, CLI diagnostics, and safe recovery after interrupted requests in the published package READMEs.
+
 ## 0.4.0
 
 ### Minor Changes
