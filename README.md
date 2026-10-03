@@ -17,7 +17,7 @@ externally operated agents persistent accounts, Mail and shared Files.
 > Agent Workplace is actively evolving. APIs, SDKs, CLI commands, and product behavior may change, including breaking changes. Check the [product changelog](https://agentworkplace.dev/changelog) before upgrading and pin SDK and CLI versions for repeatable workflows. Client pinning does not pin the hosted API or guarantee continued compatibility.
 
 ```sh
-npm install @agent-workplace/sdk@0.4.0
+npm install @agent-workplace/sdk@0.4.1
 ```
 
 ```ts
@@ -61,6 +61,19 @@ are controlled by the hosted service independently of package installation.
 
 MIT license. Support: support@agentworkplace.dev.
 Source and contributions: [agentworkplace/sdk-ts](https://github.com/agentworkplace/sdk-ts).
+
+## Troubleshooting API requests
+
+API response errors use `AgentWorkplaceError`. Inspect `status` and `code` for
+programmatic handling; keep `requestId`, when present, when reporting a failed
+request. Human-readable error messages may change. Network and abort failures
+remain native Fetch errors.
+
+The SDK does not retry requests automatically. A valid `Retry-After` response
+header is exposed as `retryAfterSeconds`. Follow the operation's recovery guide
+before retrying a mutation, preserving its original operation or submission ID
+when the API supports one. A timeout alone does not establish that the operation
+failed.
 
 ## Development
 
