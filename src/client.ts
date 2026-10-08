@@ -1,7 +1,31 @@
 import {
+  notificationAcknowledgementSchema,
+  notificationListRequestSchema,
+  notificationListSchema,
+  notificationSchema,
+  notificationReadRequestSchema,
+  notificationStatusRequestSchema,
+  notificationStatusSchema,
+  type NotificationListRequest,
+  type NotificationReadRequest,
+  type NotificationStatusRequest,
+} from "./contracts/notifications.js";
+import {
+  notificationEndpointRegisterRequestSchema,
+  notificationEndpointRegistrationSchema,
+  notificationEndpointTestAcceptanceSchema,
+  notificationEndpointInspectionSchema,
+  notificationEndpointListSchema,
+  notificationEndpointSchema,
+  type NotificationEndpointRegisterRequest,
+} from "./contracts/notification-delivery.js";
+import {
   billingInvoiceListSchema,
   type BillingInvoiceListRequest,
   billingStatusSchema,
+  billingSummarySchema,
+  billingCheckoutSchema,
+  billingPortalSchema,
   billingCommandSchema,
   type BillingCommandRequest,
   billingPurchaseSchema,
@@ -317,6 +341,215 @@ export class AgentWorkplace {
       "health",
       (value) => healthResponseSchema.parse(value),
       { allowInsecureHttp: true },
+    );
+  }
+
+  listNotifications(
+    authorization: CredentialAuthorization,
+    input: Partial<NotificationListRequest> = {},
+  ) {
+    const parsed = notificationListRequestSchema.safeParse(input);
+    if (!parsed.success)
+      throw new TypeError("Invalid notification list request");
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(parsed.data))
+      if (value !== undefined) query.set(key, String(value));
+    return this.#request(
+      `v1/notifications?${query}`,
+      (value) => notificationListSchema.parse(value),
+      this.#credentialAuthorization(authorization),
+    );
+  }
+
+  getNotificationStatus(
+    authorization: CredentialAuthorization,
+    input: NotificationStatusRequest = {},
+    options: { signal?: AbortSignal } = {},
+  ) {
+    const parsed = notificationStatusRequestSchema.safeParse(input);
+    if (!parsed.success)
+      throw new TypeError("Invalid notification status request");
+    const query = new URLSearchParams();
+    if (parsed.data.accountId !== undefined)
+      query.set("accountId", parsed.data.accountId);
+    return this.#request(
+      `v1/notifications/status${query.size ? `?${query}` : ""}`,
+      (value) => notificationStatusSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        ...(options.signal ? { signal: options.signal } : {}),
+      },
+    );
+  }
+
+  markNotificationsRead(
+    authorization: CredentialAuthorization,
+    input: NotificationReadRequest,
+  ) {
+    const parsed = notificationReadRequestSchema.safeParse(input);
+    if (!parsed.success)
+      throw new TypeError("Invalid notification acknowledgement");
+    return this.#request(
+      "v1/notifications/read",
+      (value) => notificationAcknowledgementSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        method: "POST",
+        body: JSON.stringify(parsed.data),
+      },
+    );
+  }
+
+  markNotificationRead(
+    authorization: CredentialAuthorization,
+    notificationId: string,
+    input: NotificationReadRequest,
+  ) {
+    const parsed = notificationReadRequestSchema.safeParse(input);
+    if (
+      !parsed.success ||
+      !notificationSchema.shape.id.safeParse(notificationId).success
+    )
+      throw new TypeError("Invalid notification acknowledgement");
+    return this.#request(
+      `v1/notifications/${encodeURIComponent(notificationId)}/read`,
+      (value) => notificationAcknowledgementSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        method: "POST",
+        body: JSON.stringify(parsed.data),
+      },
+    );
+  }
+
+  /** Standard discloses its generated secret once. A lost response requires
+   * endpoint removal/re-registration; there is no secret retrieval operation. */
+  registerNotificationEndpoint(
+    authorization: CredentialAuthorization,
+    input: NotificationEndpointRegisterRequest,
+    options: { signal?: AbortSignal } = {},
+  ) {
+    const parsed = notificationEndpointRegisterRequestSchema.safeParse(input);
+    if (!parsed.success)
+      throw new TypeError("Invalid notification endpoint registration");
+    return this.#request(
+      "v1/notifications/endpoints",
+      (value) => notificationEndpointRegistrationSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        method: "POST",
+        body: JSON.stringify(parsed.data),
+        sensitiveResponse: true,
+        ...(options.signal ? { signal: options.signal } : {}),
+      },
+    );
+  }
+
+  listNotificationEndpoints(
+    authorization: CredentialAuthorization,
+    input: NotificationStatusRequest = {},
+    options: { signal?: AbortSignal } = {},
+  ) {
+    const parsed = notificationStatusRequestSchema.safeParse(input);
+    if (!parsed.success)
+      throw new TypeError("Invalid notification endpoint target");
+    const query = new URLSearchParams();
+    if (parsed.data.accountId !== undefined)
+      query.set("accountId", parsed.data.accountId);
+    return this.#request(
+      `v1/notifications/endpoints${query.size ? `?${query}` : ""}`,
+      (value) => notificationEndpointListSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        sensitiveResponse: true,
+        ...(options.signal ? { signal: options.signal } : {}),
+      },
+    );
+  }
+
+  inspectNotificationEndpoint(
+    authorization: CredentialAuthorization,
+    endpointId: string,
+    input: NotificationStatusRequest = {},
+    options: { signal?: AbortSignal } = {},
+  ) {
+    const parsed = notificationStatusRequestSchema.safeParse(input);
+    if (
+      !parsed.success ||
+      !notificationEndpointSchema.shape.id.safeParse(endpointId).success
+    )
+      throw new TypeError("Invalid notification endpoint target");
+    const query = new URLSearchParams();
+    if (parsed.data.accountId !== undefined)
+      query.set("accountId", parsed.data.accountId);
+    return this.#request(
+      `v1/notifications/endpoints/${encodeURIComponent(endpointId)}${query.size ? `?${query}` : ""}`,
+      (value) => notificationEndpointInspectionSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        sensitiveResponse: true,
+        ...(options.signal ? { signal: options.signal } : {}),
+      },
+    );
+  }
+
+  /** Queues a real receiver run; the acceptance receipt does not mean delivery.
+   * Inspect endpoint diagnostics later. An uncertain response may have queued it. */
+  testNotificationEndpoint(
+    authorization: CredentialAuthorization,
+    endpointId: string,
+    input: NotificationStatusRequest = {},
+    options: { signal?: AbortSignal } = {},
+  ) {
+    const parsed = notificationStatusRequestSchema.safeParse(input);
+    if (
+      !parsed.success ||
+      !notificationEndpointSchema.shape.id.safeParse(endpointId).success
+    )
+      throw new TypeError("Invalid notification endpoint target");
+    const query = new URLSearchParams();
+    if (parsed.data.accountId !== undefined)
+      query.set("accountId", parsed.data.accountId);
+    return this.#request(
+      `v1/notifications/endpoints/${encodeURIComponent(endpointId)}/test${query.size ? `?${query}` : ""}`,
+      (value) => notificationEndpointTestAcceptanceSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        method: "POST",
+        sensitiveResponse: true,
+        ...(options.signal ? { signal: options.signal } : {}),
+      },
+    );
+  }
+
+  removeNotificationEndpoint(
+    authorization: CredentialAuthorization,
+    endpointId: string,
+    input: NotificationStatusRequest = {},
+    options: { signal?: AbortSignal } = {},
+  ): Promise<void> {
+    const parsed = notificationStatusRequestSchema.safeParse(input);
+    if (
+      !parsed.success ||
+      !notificationEndpointSchema.shape.id.safeParse(endpointId).success
+    )
+      throw new TypeError("Invalid notification endpoint target");
+    const query = new URLSearchParams();
+    if (parsed.data.accountId !== undefined)
+      query.set("accountId", parsed.data.accountId);
+    return this.#request(
+      `v1/notifications/endpoints/${encodeURIComponent(endpointId)}${query.size ? `?${query}` : ""}`,
+      (value) => {
+        if (value !== undefined)
+          throw new TypeError("Invalid notification endpoint removal response");
+      },
+      {
+        ...this.#credentialAuthorization(authorization),
+        method: "DELETE",
+        emptyResponse: true,
+        sensitiveResponse: true,
+        ...(options.signal ? { signal: options.signal } : {}),
+      },
     );
   }
 
@@ -1749,6 +1982,34 @@ export class AgentWorkplace {
       },
     );
   }
+  /** One-step Checkout preparation. Reuse the ID after an interrupted response.
+   * The returned hosted URL is sensitive and must not be logged or persisted. */
+  openBillingCheckout(
+    authorization: CredentialAuthorization,
+    input: BillingPurchaseRequest,
+  ) {
+    return this.#request(
+      "v1/workplace/billing/checkout",
+      (value) => billingCheckoutSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    );
+  }
+  /** Fresh authenticated portal session; never log or persist its URL. */
+  openBillingPortal(authorization: CredentialAuthorization) {
+    return this.#request(
+      "v1/workplace/billing/portal",
+      (value) => billingPortalSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        method: "POST",
+        body: "{}",
+      },
+    );
+  }
   requestBillingPurchase(
     authorization: CredentialAuthorization,
     input: BillingPurchaseRequest,
@@ -1810,6 +2071,13 @@ export class AgentWorkplace {
       `v1/workplace/billing/invoices/${encodeURIComponent(reference)}/link`,
       (value) => billingPaymentActionSchema.parse(value),
       { ...this.#credentialAuthorization(authorization), method: "POST" },
+    );
+  }
+  getBillingSummary(authorization: CredentialAuthorization) {
+    return this.#request(
+      "v1/workplace/billing/summary",
+      (value) => billingSummarySchema.parse(value),
+      this.#credentialAuthorization(authorization),
     );
   }
   getBillingStatus(authorization: CredentialAuthorization) {
@@ -1968,7 +2236,12 @@ export class AgentWorkplace {
       body?: string;
       apiKey?: string;
       allowInsecureHttp?: boolean;
+      signal?: AbortSignal;
       credentials?: "include" | "omit";
+      /** Only operations explicitly returning 204 may bypass JSON parsing. */
+      emptyResponse?: boolean;
+      /** Endpoint responses can carry one-time secrets or private hook URLs. */
+      sensitiveResponse?: boolean;
     } = {},
   ): Promise<T> {
     if (!options.allowInsecureHttp && !secureTransport(this.#baseUrl))
@@ -1982,6 +2255,7 @@ export class AgentWorkplace {
       {
         method: options.method ?? "GET",
         redirect: "error",
+        ...(options.signal ? { signal: options.signal } : {}),
         ...(options.credentials ? { credentials: options.credentials } : {}),
         ...(options.body === undefined ? {} : { body: options.body }),
         headers: {
@@ -2002,7 +2276,10 @@ export class AgentWorkplace {
     let body: unknown;
 
     try {
-      body = await response.json();
+      body =
+        options.emptyResponse && response.status === 204
+          ? undefined
+          : await response.json();
     } catch (cause) {
       if (!response.ok) {
         throw new AgentWorkplaceError(
@@ -2019,7 +2296,7 @@ export class AgentWorkplace {
         "The Agent Workplace API returned invalid JSON",
         {
           status: response.status,
-          cause,
+          ...(options.sensitiveResponse ? {} : { cause }),
           retryAfterSeconds,
           requestId: returnedRequestId,
         },
@@ -2056,7 +2333,7 @@ export class AgentWorkplace {
         "The Agent Workplace API returned an invalid response",
         {
           status: response.status,
-          cause,
+          ...(options.sensitiveResponse ? {} : { cause }),
           retryAfterSeconds,
           requestId: returnedRequestId,
         },

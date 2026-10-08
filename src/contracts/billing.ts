@@ -93,6 +93,40 @@ export const billingPaymentActionSchema = z.discriminatedUnion("kind", [
 ]);
 export type BillingPaymentAction = z.infer<typeof billingPaymentActionSchema>;
 
+/** Foreground preparation retains the durable identity on pending outcomes. */
+export const billingCheckoutSchema = z
+  .object({
+    purchase: billingPurchaseSchema,
+    action: billingPaymentActionSchema,
+  })
+  .strict();
+export type BillingCheckout = z.infer<typeof billingCheckoutSchema>;
+
+export const billingPortalSchema = z.object({ url: paymentUrl }).strict();
+export type BillingPortal = z.infer<typeof billingPortalSchema>;
+
+export const billingSummarySchema = z
+  .object({
+    status: billingStatusSchema,
+    state: z.enum([
+      "starter",
+      "free",
+      "active",
+      "ending",
+      "payment_required",
+      "confirming",
+      "overdue",
+      "ended",
+    ]),
+    renewalAt: z.iso.datetime().nullable(),
+    endedAt: z.iso.datetime().nullable(),
+    portalEnabled: z.boolean(),
+    canManage: z.boolean(),
+    canUpgrade: z.boolean(),
+  })
+  .strict();
+export type BillingSummary = z.infer<typeof billingSummarySchema>;
+
 /** Invoice references are identifiers, never native hosted capabilities. */
 export const billingInvoiceReferenceSchema = z
   .string()
