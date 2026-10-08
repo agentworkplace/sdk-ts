@@ -3,6 +3,9 @@ import {
   billingInvoiceListSchema,
   billingInvoiceListRequestSchema,
   billingStatusSchema,
+  billingSummarySchema,
+  billingCheckoutSchema,
+  billingPortalSchema,
   billingCommandSchema,
   billingCommandRequestSchema,
   billingPurchaseSchema,
@@ -117,6 +120,51 @@ it("bounds invoice pages and rejects URLs in summaries or cursors", () => {
       invoices: [],
       next: null,
       url: "https://invoice.stripe.com/i/private",
+    }).success,
+  ).toBe(false);
+});
+
+it("adds redirect contracts without extending the released strict status shape", () => {
+  const summary = {
+    status,
+    state: "free",
+    renewalAt: null,
+    endedAt: null,
+    portalEnabled: false,
+    canManage: false,
+    canUpgrade: true,
+  };
+  expect(billingSummarySchema.parse(summary)).toEqual(summary);
+  expect(
+    billingStatusSchema.safeParse({ ...status, canUpgrade: true }).success,
+  ).toBe(false);
+  expect(
+    billingSummarySchema.safeParse({ ...summary, renewalAt: "tomorrow" })
+      .success,
+  ).toBe(false);
+  expect(
+    billingPortalSchema.parse({ url: "https://billing.stripe.com/p/session" }),
+  ).toEqual({ url: "https://billing.stripe.com/p/session" });
+  for (const value of [
+    { url: "http://billing.stripe.com/p/session" },
+    { url: "javascript:alert(1)" },
+    { url: "https://billing.stripe.com/p/session", customer: "cus_private" },
+  ])
+    expect(billingPortalSchema.safeParse(value).success).toBe(false);
+  const checkout = {
+    purchase: {
+      id: status.workplaceId,
+      state: "pending",
+      requestedAt: "2026-10-04T00:00:00.000Z",
+      expiresAt: "2026-10-04T01:00:00.000Z",
+    },
+    action: { kind: "pending" },
+  };
+  expect(billingCheckoutSchema.parse(checkout)).toEqual(checkout);
+  expect(
+    billingCheckoutSchema.safeParse({
+      ...checkout,
+      purchase: { ...checkout.purchase, id: "cs_native" },
     }).success,
   ).toBe(false);
 });

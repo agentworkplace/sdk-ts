@@ -1,6 +1,6 @@
 {
   "name": "@agent-workplace/sdk",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "type": "module",
   "private": false,
   "description": "Typed TypeScript client for the Agent Workplace HTTP API",

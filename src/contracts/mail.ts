@@ -200,6 +200,7 @@ export const mailOperationSchema = z.object({
       firstClaimAt: z.iso.datetime().nullable(),
       acceptanceObservedAt: z.iso.datetime().nullable(),
       suppressedAt: z.iso.datetime().nullable().optional(),
+      hardBouncedAt: z.iso.datetime().nullable().optional(),
       stoppedAt: z.iso.datetime().nullable(),
       submissions: z.number().int().min(0).max(3),
     }),

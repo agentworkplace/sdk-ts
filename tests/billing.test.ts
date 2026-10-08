@@ -8,6 +8,51 @@ const status = {
   pendingCommand: null,
 };
 it.each([{ apiKey: "fixture-key" }, { humanSession: true as const }])(
+  "reads display capabilities without changing the legacy status contract: %j",
+  async (authority) => {
+    const summary = {
+      status,
+      state: "free",
+      renewalAt: null,
+      endedAt: null,
+      portalEnabled: true,
+      canManage: false,
+      canUpgrade: true,
+    };
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(Response.json(summary))
+      .mockResolvedValueOnce(Response.json(status))
+      .mockResolvedValueOnce(
+        Response.json({ ...summary, renewalAt: "unknown" }),
+      )
+      .mockResolvedValueOnce(
+        Response.json({
+          ...summary,
+          status: { ...status, customerId: "cus_private" },
+        }),
+      );
+    const client = new AgentWorkplace({
+      baseUrl: "https://api.example.test",
+      fetch,
+    });
+    expect(await client.getBillingSummary(authority)).toEqual(summary);
+    expect(await client.getBillingStatus(authority)).toEqual(status);
+    await expect(client.getBillingSummary(authority)).rejects.toThrow();
+    await expect(client.getBillingSummary(authority)).rejects.toThrow();
+    expect(new URL(String(fetch.mock.calls[0]![0])).pathname).toBe(
+      "/v1/workplace/billing/summary",
+    );
+    for (const [, init] of fetch.mock.calls) {
+      if ("apiKey" in authority)
+        expect(new Headers(init?.headers).get("Authorization")).toBe(
+          "Bearer fixture-key",
+        );
+      else expect(init?.credentials).toBe("include");
+    }
+  },
+);
+it.each([{ apiKey: "fixture-key" }, { humanSession: true as const }])(
   "reads validated billing status with explicit authority %j",
   async (authority) => {
     const fetch = vi
@@ -176,3 +221,48 @@ it("lists bounded invoice pages and requests private documents through HTTP only
   expect(init?.method).toBe("POST");
   expect(init?.credentials).toBe("include");
 });
+
+it.each([{ apiKey: "fixture-key" }, { humanSession: true as const }])(
+  "opens Checkout and the portal through validated API responses with %j",
+  async (authority) => {
+    const purchase = {
+      id: status.workplaceId,
+      state: "ready",
+      requestedAt: "2026-10-04T00:00:00.000Z",
+      expiresAt: "2026-10-04T01:00:00.000Z",
+    };
+    const checkout = {
+      purchase,
+      action: {
+        kind: "checkout",
+        url: "https://checkout.stripe.com/c/session",
+        expiresAt: purchase.expiresAt,
+      },
+    };
+    const portal = { url: "https://billing.stripe.com/p/session" };
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(Response.json(checkout))
+      .mockResolvedValueOnce(Response.json(portal))
+      .mockResolvedValueOnce(Response.json({ url: "javascript:alert(1)" }));
+    const client = new AgentWorkplace({
+      baseUrl: "https://api.example.test",
+      fetch,
+    });
+    expect(
+      await client.openBillingCheckout(authority, { id: purchase.id }),
+    ).toEqual(checkout);
+    expect(await client.openBillingPortal(authority)).toEqual(portal);
+    await expect(client.openBillingPortal(authority)).rejects.toThrow();
+    expect(new URL(String(fetch.mock.calls[0]![0])).pathname).toBe(
+      "/v1/workplace/billing/checkout",
+    );
+    expect(fetch.mock.calls[0]![1]?.body).toBe(
+      JSON.stringify({ id: purchase.id }),
+    );
+    expect(new URL(String(fetch.mock.calls[1]![0])).pathname).toBe(
+      "/v1/workplace/billing/portal",
+    );
+    expect(fetch.mock.calls[1]![1]?.body).toBe("{}");
+  },
+);

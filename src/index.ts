@@ -225,6 +225,9 @@ export type {
   BillingInvoiceListRequest,
   BillingInvoiceSummary,
   BillingStatus,
+  BillingSummary,
+  BillingCheckout,
+  BillingPortal,
   BillingCommand,
   BillingCommandRequest,
   BillingPurchase,
@@ -232,3 +235,29 @@ export type {
   BillingPaymentAction,
   BillingPaymentRequest,
 } from "./contracts/billing.js";
+
+export type {
+  Notification,
+  NotificationPosition,
+  NotificationSubject,
+  NotificationReason,
+  NotificationList,
+  NotificationListRequest,
+  NotificationStatus,
+  NotificationStatusRequest,
+  NotificationReadRequest,
+  NotificationAcknowledgement,
+} from "./contracts/notifications.js";
+
+export { compareNotificationPositions } from "./notifications.js";
+
+export type {
+  NotificationProfile,
+  NotificationDeliveryErrorCategory,
+  NotificationEndpoint,
+  NotificationEndpointRegisterRequest,
+  NotificationEndpointRegistration,
+  NotificationEndpointInspection,
+  NotificationEndpointList,
+  NotificationEndpointTestAcceptance,
+} from "./contracts/notification-delivery.js";

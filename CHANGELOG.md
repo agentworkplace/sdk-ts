@@ -1,5 +1,18 @@
 # @agent-workplace/sdk
 
+## 0.5.0
+
+### Minor Changes
+
+- Add notification endpoint registration, listing, inspection, queued tests, and removal with explicit account targeting and cancellation. Standard secrets are returned once; customer tokens are never returned. Requires a server with notification endpoint management enabled. Client publication and application activation remain independent.
+
+  The CLI adds `notifications endpoints register --file`, `list`, `inspect`, `test`, and `remove`. Registration reads bounded JSON from a file or stdin; bearer tokens are never printed in successful output.
+
+  Tests return an acceptance receipt before worker delivery and may start a real receiver run even with no unread items. Inspect endpoint diagnostics for the result; tests do not acknowledge notifications or change automatic coverage or backoff.
+
+- Add account notification list, status, and explicit read acknowledgement. The CLI includes wait/watch with in-memory positions and bounded polling backoff. Requires a Notifications-enabled server; application activation and client publication remain independent.
+- Add `openBillingCheckout`, `openBillingPortal`, and `getBillingSummary` for direct hosted billing navigation and current subscription presentation. Existing billing status, purchase, payment, command, and invoice methods retain their contracts. Hosted navigation requires enabled server capabilities; redirect URLs are sensitive and must not be logged or persisted.
+
 ## 0.4.1
 
 ### Patch Changes
