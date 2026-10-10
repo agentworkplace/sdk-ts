@@ -1,7 +1,30 @@
 import {
+  chatAddRequestSchema,
+  chatConversationSchema,
+  chatCreateOutcomeSchema,
+  chatCreateRequestSchema,
+  chatDeleteOutcomeSchema,
+  chatEntriesRequestSchema,
+  chatEntriesSchema,
+  chatLeaveRequestSchema,
+  chatListRequestSchema,
+  chatListSchema,
+  chatMembershipOutcomeSchema,
+  chatPostOutcomeSchema,
+  chatPostRequestSchema,
+  chatRemoveRequestSchema,
+  type ChatAddRequest,
+  type ChatCreateRequest,
+  type ChatEntriesRequest,
+  type ChatLeaveRequest,
+  type ChatListRequest,
+  type ChatPostRequest,
+  type ChatRemoveRequest,
+} from "./contracts/chat.js";
+import {
   notificationAcknowledgementSchema,
   notificationListRequestSchema,
-  notificationListSchema,
+  clientNotificationListSchema,
   notificationSchema,
   notificationReadRequestSchema,
   notificationStatusRequestSchema,
@@ -344,6 +367,207 @@ export class AgentWorkplace {
     );
   }
 
+  listChatConversations(
+    authorization: CredentialAuthorization,
+    input: ChatListRequest = {},
+    options: { signal?: AbortSignal } = {},
+  ) {
+    const parsed = chatListRequestSchema.safeParse(input);
+    if (!parsed.success) throw new TypeError("Invalid Chat request");
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(parsed.data))
+      if (value !== undefined) query.set(key, String(value));
+    return this.#request(
+      `v1/chat/conversations?${query}`,
+      (value) => chatListSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        sensitiveResponse: true,
+        ...(options.signal ? { signal: options.signal } : {}),
+      },
+    );
+  }
+
+  createChatConversation(
+    authorization: CredentialAuthorization,
+    input: ChatCreateRequest,
+    options: { signal?: AbortSignal } = {},
+  ) {
+    const parsed = chatCreateRequestSchema.safeParse(input);
+    if (!parsed.success) throw new TypeError("Invalid Chat request");
+    return this.#request(
+      `v1/chat/conversations`,
+      (value) => chatCreateOutcomeSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        sensitiveResponse: true,
+        ...(options.signal ? { signal: options.signal } : {}),
+        method: "POST",
+        body: JSON.stringify(parsed.data),
+      },
+    );
+  }
+
+  getChatConversation(
+    authorization: CredentialAuthorization,
+    conversationId: string,
+    options: { signal?: AbortSignal } = {},
+  ) {
+    const id =
+      chatConversationSchema.shape.conversationId.safeParse(conversationId);
+    if (!id.success) throw new TypeError("Invalid conversation ID");
+    return this.#request(
+      `v1/chat/conversations/${encodeURIComponent(id.data)}`,
+      (value) => chatConversationSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        sensitiveResponse: true,
+        ...(options.signal ? { signal: options.signal } : {}),
+      },
+    );
+  }
+
+  readChatEntries(
+    authorization: CredentialAuthorization,
+    conversationId: string,
+    input: ChatEntriesRequest = {},
+    options: { signal?: AbortSignal } = {},
+  ) {
+    const id =
+      chatConversationSchema.shape.conversationId.safeParse(conversationId);
+    if (!id.success) throw new TypeError("Invalid conversation ID");
+    const parsed = chatEntriesRequestSchema.safeParse(input);
+    if (!parsed.success) throw new TypeError("Invalid Chat request");
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(parsed.data))
+      if (value !== undefined) query.set(key, String(value));
+    return this.#request(
+      `v1/chat/conversations/${encodeURIComponent(id.data)}/entries?${query}`,
+      (value) => chatEntriesSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        sensitiveResponse: true,
+        ...(options.signal ? { signal: options.signal } : {}),
+      },
+    );
+  }
+
+  postChatMessage(
+    authorization: CredentialAuthorization,
+    conversationId: string,
+    input: ChatPostRequest,
+    options: { signal?: AbortSignal } = {},
+  ) {
+    const id =
+      chatConversationSchema.shape.conversationId.safeParse(conversationId);
+    if (!id.success) throw new TypeError("Invalid conversation ID");
+    const parsed = chatPostRequestSchema.safeParse(input);
+    if (!parsed.success) throw new TypeError("Invalid Chat request");
+    return this.#request(
+      `v1/chat/conversations/${encodeURIComponent(id.data)}/messages`,
+      (value) => chatPostOutcomeSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        sensitiveResponse: true,
+        ...(options.signal ? { signal: options.signal } : {}),
+        method: "POST",
+        body: JSON.stringify(parsed.data),
+      },
+    );
+  }
+
+  addChatParticipants(
+    authorization: CredentialAuthorization,
+    conversationId: string,
+    input: ChatAddRequest,
+    options: { signal?: AbortSignal } = {},
+  ) {
+    const id =
+      chatConversationSchema.shape.conversationId.safeParse(conversationId);
+    if (!id.success) throw new TypeError("Invalid conversation ID");
+    const parsed = chatAddRequestSchema.safeParse(input);
+    if (!parsed.success) throw new TypeError("Invalid Chat request");
+    return this.#request(
+      `v1/chat/conversations/${encodeURIComponent(id.data)}/participants`,
+      (value) => chatMembershipOutcomeSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        sensitiveResponse: true,
+        ...(options.signal ? { signal: options.signal } : {}),
+        method: "POST",
+        body: JSON.stringify(parsed.data),
+      },
+    );
+  }
+
+  leaveChatConversation(
+    authorization: CredentialAuthorization,
+    conversationId: string,
+    input: ChatLeaveRequest,
+    options: { signal?: AbortSignal } = {},
+  ) {
+    const id =
+      chatConversationSchema.shape.conversationId.safeParse(conversationId);
+    if (!id.success) throw new TypeError("Invalid conversation ID");
+    const parsed = chatLeaveRequestSchema.safeParse(input);
+    if (!parsed.success) throw new TypeError("Invalid Chat request");
+    return this.#request(
+      `v1/chat/conversations/${encodeURIComponent(id.data)}/leave`,
+      (value) => chatMembershipOutcomeSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        sensitiveResponse: true,
+        ...(options.signal ? { signal: options.signal } : {}),
+        method: "POST",
+        body: JSON.stringify(parsed.data),
+      },
+    );
+  }
+
+  removeChatParticipant(
+    authorization: CredentialAuthorization,
+    conversationId: string,
+    input: ChatRemoveRequest,
+    options: { signal?: AbortSignal } = {},
+  ) {
+    const id =
+      chatConversationSchema.shape.conversationId.safeParse(conversationId);
+    if (!id.success) throw new TypeError("Invalid conversation ID");
+    const parsed = chatRemoveRequestSchema.safeParse(input);
+    if (!parsed.success) throw new TypeError("Invalid Chat request");
+    return this.#request(
+      `v1/chat/conversations/${encodeURIComponent(id.data)}/remove`,
+      (value) => chatMembershipOutcomeSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        sensitiveResponse: true,
+        ...(options.signal ? { signal: options.signal } : {}),
+        method: "POST",
+        body: JSON.stringify(parsed.data),
+      },
+    );
+  }
+
+  deleteChatConversation(
+    authorization: CredentialAuthorization,
+    conversationId: string,
+    options: { signal?: AbortSignal } = {},
+  ) {
+    const id =
+      chatConversationSchema.shape.conversationId.safeParse(conversationId);
+    if (!id.success) throw new TypeError("Invalid conversation ID");
+    return this.#request(
+      `v1/chat/conversations/${encodeURIComponent(id.data)}`,
+      (value) => chatDeleteOutcomeSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        sensitiveResponse: true,
+        ...(options.signal ? { signal: options.signal } : {}),
+        method: "DELETE",
+      },
+    );
+  }
+
   listNotifications(
     authorization: CredentialAuthorization,
     input: Partial<NotificationListRequest> = {},
@@ -356,8 +580,11 @@ export class AgentWorkplace {
       if (value !== undefined) query.set(key, String(value));
     return this.#request(
       `v1/notifications?${query}`,
-      (value) => notificationListSchema.parse(value),
-      this.#credentialAuthorization(authorization),
+      (value) => clientNotificationListSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        sensitiveResponse: true,
+      },
     );
   }
 

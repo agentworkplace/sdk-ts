@@ -23,6 +23,8 @@ export const notificationReasonSchema = z.enum([
   "mail_send_uncertain",
   "mail_send_accepted",
   "mail_send_bounced",
+  "chat_added",
+  "chat_message",
 ]);
 export type NotificationReason = z.infer<typeof notificationReasonSchema>;
 
@@ -35,11 +37,30 @@ export const notificationSubjectSchema = z.discriminatedUnion("kind", [
     })
     .strict(),
   z.object({ kind: z.literal("mailbox"), id: z.uuid() }).strict(),
+  z.object({ kind: z.literal("conversation"), id: z.uuid() }).strict(),
   z
     .object({ kind: z.literal("mail_send"), mailboxId: z.uuid(), id: z.uuid() })
     .strict(),
 ]);
 export type NotificationSubject = z.infer<typeof notificationSubjectSchema>;
+
+function validSource(value: {
+  subject: NotificationSubject;
+  reason: NotificationReason;
+}) {
+  if (value.subject.kind === "mail_message")
+    return value.reason === "mail_received";
+  if (value.subject.kind === "mailbox") return value.reason === "mail_omitted";
+  if (value.subject.kind === "conversation")
+    return value.reason === "chat_added" || value.reason === "chat_message";
+  return [
+    "mail_send_failed",
+    "mail_send_canceled",
+    "mail_send_uncertain",
+    "mail_send_accepted",
+    "mail_send_bounced",
+  ].includes(value.reason);
+}
 
 export const notificationSchema = z
   .object({
@@ -50,8 +71,50 @@ export const notificationSchema = z
     updatedAt: z.iso.datetime(),
     read: z.boolean(),
   })
-  .strict();
+  .strict()
+  .refine(validSource);
 export type Notification = z.infer<typeof notificationSchema>;
+
+// Consumers can safely list newer sources, while writers retain the strict
+// source contract above. Discard unknown source fields rather than projecting
+// unvalidated content, URLs, or resource identifiers into public client output.
+const sourceCode = z
+  .string()
+  .max(64)
+  .regex(/^[a-z][a-z0-9_]*$/);
+const clientSubjectSchema = z
+  .object({ kind: sourceCode })
+  .passthrough()
+  .refine(
+    (value) =>
+      !notificationSubjectSchema.options.some(
+        (option) => option.shape.kind.safeParse(value.kind).success,
+      ) || notificationSubjectSchema.safeParse(value).success,
+  )
+  .transform((value) => {
+    const known = notificationSubjectSchema.safeParse(value);
+    return known.success ? known.data : { kind: "unknown" as const };
+  });
+const clientReasonSchema = sourceCode.transform((value) => {
+  const known = notificationReasonSchema.safeParse(value);
+  return known.success ? known.data : ("unknown" as const);
+});
+export const clientNotificationSchema = z
+  .object({
+    ...notificationSchema.shape,
+    subject: clientSubjectSchema,
+    reason: clientReasonSchema,
+  })
+  .strict()
+  .refine(
+    (value) =>
+      value.subject.kind === "unknown" ||
+      value.reason === "unknown" ||
+      validSource({ subject: value.subject, reason: value.reason }),
+  );
+export type ClientNotification = z.infer<typeof clientNotificationSchema>;
+export type ClientNotificationSubject = ClientNotification["subject"];
+export type ClientNotificationReason = ClientNotification["reason"];
 
 export const notificationListRequestSchema = z
   .object({
@@ -71,6 +134,12 @@ export const notificationListSchema = z
   })
   .strict();
 export type NotificationList = z.infer<typeof notificationListSchema>;
+export const clientNotificationListSchema = notificationListSchema.extend({
+  notifications: z.array(clientNotificationSchema).max(100),
+});
+export type ClientNotificationList = z.infer<
+  typeof clientNotificationListSchema
+>;
 
 export const notificationStatusRequestSchema = z
   .object({

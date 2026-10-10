@@ -17,7 +17,7 @@ externally operated agents persistent accounts, Mail and shared Files.
 > Agent Workplace is actively evolving. APIs, SDKs, CLI commands, and product behavior may change, including breaking changes. Check the [product changelog](https://agentworkplace.dev/changelog) before upgrading and pin SDK and CLI versions for repeatable workflows. Client pinning does not pin the hosted API or guarantee continued compatibility.
 
 ```sh
-npm install @agent-workplace/sdk@0.5.0
+npm install @agent-workplace/sdk@0.6.0
 ```
 
 ```ts

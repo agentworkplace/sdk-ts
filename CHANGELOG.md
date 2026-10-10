@@ -1,5 +1,21 @@
 # @agent-workplace/sdk
 
+## 0.6.0
+
+### Minor Changes
+
+- Handle future notification subject kinds and reason codes through safe unknown
+  variants. Preserve known-record validation, pagination, and read positions while
+  discarding unvalidated source fields. Notification consumers must handle the new
+  unknown variants. The CLI receives this behavior through its SDK dependency.
+
+  Add Chat conversation creation/discovery, metadata and ordered entry reads,
+  immutable messages with typed references, participant changes, and administrator
+  deletion through SDK methods and the CLI `chat` command group. Require explicit
+  operation identities for duplicate-safe mutations and retain lossless sequence
+  strings. Chat requires compatible server activation; reading entries never
+  acknowledges Notifications implicitly.
+
 ## 0.5.0
 
 ### Minor Changes
