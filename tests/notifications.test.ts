@@ -18,6 +18,90 @@ const endpoint = {
 const endpointStatus = { position, unreadCount: 0, oldestUnreadAt: null };
 const secret = `whsec_${"A".repeat(43)}=`;
 
+test("notification lists preserve known records and safely represent future kinds and reasons", async () => {
+  const known = {
+    id: account,
+    subject: { kind: "mailbox", id: account },
+    reason: "mail_omitted",
+    position,
+    updatedAt: "2026-10-09T00:00:00.000Z",
+    read: false,
+  };
+  const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+    Response.json({
+      notifications: [
+        known,
+        { ...known, reason: "future_reason" },
+        {
+          ...known,
+          subject: {
+            kind: "future_source",
+            privateText: "never expose",
+            url: "https://private.example",
+          },
+          reason: "future_reason",
+        },
+      ],
+      nextCursor: "all/next",
+    }),
+  );
+  const result = await new AgentWorkplace({ fetch }).listNotifications({
+    apiKey: "key",
+  });
+  expect(result).toEqual({
+    notifications: [
+      known,
+      { ...known, reason: "unknown" },
+      { ...known, subject: { kind: "unknown" }, reason: "unknown" },
+    ],
+    nextCursor: "all/next",
+  });
+  expect(JSON.stringify(result)).not.toContain("private");
+  expect(fetch).toHaveBeenCalledTimes(1);
+});
+
+test("future compatibility never disguises malformed known notification records", async () => {
+  const known = {
+    id: account,
+    subject: { kind: "mailbox", id: account },
+    reason: "mail_omitted",
+    position,
+    updatedAt: "2026-10-09T00:00:00.000Z",
+    read: false,
+  };
+  for (const invalid of [
+    { ...known, subject: { kind: "mail_message", id: account } },
+    {
+      ...known,
+      subject: { kind: "mailbox", id: "private-invalid" },
+      reason: "future_reason",
+    },
+    { ...known, reason: "mail_received" },
+    {
+      ...known,
+      subject: { kind: "mailbox", id: account, text: "private-content" },
+    },
+    {
+      ...known,
+      subject: { kind: "future_source" },
+      position: "private-invalid",
+    },
+    { ...known, reason: "private arbitrary text" },
+  ]) {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValue(
+        Response.json({ notifications: [invalid], nextCursor: null }),
+      );
+    const error: unknown = await new AgentWorkplace({ fetch })
+      .listNotifications({ apiKey: "key" })
+      .catch((value: unknown) => value);
+    expect(error).toMatchObject({ name: "AgentWorkplaceError", status: 200 });
+    expect((error as Error).cause).toBeUndefined();
+    expect(String(error)).not.toContain("private");
+  }
+});
+
 test("endpoint methods preserve auth, target, cancellation and empty removal responses", async () => {
   const fetch = vi
     .fn<typeof globalThis.fetch>()

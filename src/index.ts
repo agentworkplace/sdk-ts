@@ -237,11 +237,11 @@ export type {
 } from "./contracts/billing.js";
 
 export type {
-  Notification,
+  ClientNotification as Notification,
   NotificationPosition,
-  NotificationSubject,
-  NotificationReason,
-  NotificationList,
+  ClientNotificationSubject as NotificationSubject,
+  ClientNotificationReason as NotificationReason,
+  ClientNotificationList as NotificationList,
   NotificationListRequest,
   NotificationStatus,
   NotificationStatusRequest,
@@ -261,3 +261,25 @@ export type {
   NotificationEndpointList,
   NotificationEndpointTestAcceptance,
 } from "./contracts/notification-delivery.js";
+
+export type {
+  ChatSequence,
+  ChatReference,
+  ChatParticipant,
+  ChatConversation,
+  ChatMessage,
+  ChatEntry,
+  ChatCreateRequest,
+  ChatPostRequest,
+  ChatAddRequest,
+  ChatLeaveRequest,
+  ChatRemoveRequest,
+  ChatCreateOutcome,
+  ChatPostOutcome,
+  ChatMembershipOutcome,
+  ChatDeleteOutcome,
+  ChatListRequest,
+  ChatList,
+  ChatEntriesRequest,
+  ChatEntries,
+} from "./contracts/chat.js";

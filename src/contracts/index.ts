@@ -15,3 +15,4 @@ export {
 
 export * from "./notifications.js";
 export * from "./notification-delivery.js";
+export * from "./chat.js";

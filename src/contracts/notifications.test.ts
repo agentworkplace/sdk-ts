@@ -108,3 +108,42 @@ test("status carries a lossless position, bounded count, and nullable oldest tim
     }).success,
   ).toBe(false);
 });
+
+test("strict notification sources reject unknown and mismatched reasons", () => {
+  const item = {
+    id: accountId,
+    subject: { kind: "mailbox", id: accountId },
+    reason: "mail_omitted",
+    position,
+    updatedAt: "2026-10-09T00:00:00.000Z",
+    read: false,
+  };
+  expect(notificationSchema.safeParse(item).success).toBe(true);
+  for (const value of [
+    { ...item, reason: "mail_received" },
+    { ...item, reason: "future_reason" },
+    { ...item, subject: { kind: "future_source", id: accountId } },
+  ])
+    expect(notificationSchema.safeParse(value).success).toBe(false);
+});
+
+test("Chat source reasons require a conversation and no Mailbox metadata", () => {
+  const item = {
+    id: accountId,
+    subject: { kind: "conversation", id: accountId },
+    reason: "chat_added",
+    position,
+    updatedAt: "2026-10-09T00:00:00.000Z",
+    read: false,
+  };
+  expect(notificationSchema.safeParse(item).success).toBe(true);
+  expect(
+    notificationSchema.safeParse({ ...item, reason: "chat_message" }).success,
+  ).toBe(true);
+  for (const value of [
+    { ...item, reason: "mail_received" },
+    { ...item, subject: { kind: "mailbox", id: accountId } },
+    { ...item, subject: { ...item.subject, mailboxId: accountId } },
+  ])
+    expect(notificationSchema.safeParse(value).success).toBe(false);
+});
