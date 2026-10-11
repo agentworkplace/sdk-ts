@@ -73,6 +73,11 @@ import {
   type FileDownloadOptions,
 } from "./files-download.js";
 import {
+  checkDownloadLimit,
+  validateDownloadLimit,
+  type DownloadOptions,
+} from "./download-options.js";
+import {
   walkTree,
   walkRetained,
   type FilesTreeVisitStore,
@@ -1351,8 +1356,14 @@ export class AgentWorkplace {
       transfer: (url, init) => this.#transferFetch(transferUrl(url), init),
     });
   }
-  async downloadFile(authorization: CredentialAuthorization, ref: FileRef) {
+  async downloadFile(
+    authorization: CredentialAuthorization,
+    ref: FileRef,
+    options: DownloadOptions = {},
+  ) {
+    const maxBytes = validateDownloadLimit(options);
     const grant = await this.getFileDownloadGrant(authorization, ref);
+    checkDownloadLimit(grant.file.byteLength, maxBytes);
     if (grant.file.byteLength > 64 * 1024 * 1024)
       throw new TypeError(
         "Whole-buffer downloads are limited to 64 MiB; use downloadFileTo",
@@ -1385,6 +1396,7 @@ export class AgentWorkplace {
         const chunk = await reader.read();
         if (chunk.done) break;
         length += chunk.value.length;
+        checkDownloadLimit(length, maxBytes);
         if (length > grant.file.byteLength || length > 64 * 1024 * 1024)
           throw new Error("length");
         chunks.push(chunk.value);
@@ -1401,7 +1413,12 @@ export class AgentWorkplace {
       )
         throw new Error("integrity");
       return { file: grant.file, bytes };
-    } catch {
+    } catch (error) {
+      if (
+        error instanceof AgentWorkplaceError &&
+        error.code === "download_too_large"
+      )
+        throw error;
       throw new AgentWorkplaceError(
         "File download integrity or transport check failed",
         { status: 0, code: "transfer_interrupted" },
@@ -1771,8 +1788,11 @@ export class AgentWorkplace {
   async downloadMailAttachment(
     authorization: CredentialAuthorization,
     ref: MailAttachmentDownloadRequest,
+    options: DownloadOptions = {},
   ) {
+    const maxBytes = validateDownloadLimit(options);
     const grant = await this.getMailAttachmentDownloadGrant(authorization, ref);
+    checkDownloadLimit(grant.attachment.bytes, maxBytes);
     let reader: ReadableStreamDefaultReader<Uint8Array> | undefined;
     try {
       const response = await this.#transferFetch(transferUrl(grant.url), {
@@ -1790,6 +1810,7 @@ export class AgentWorkplace {
       for (;;) {
         const chunk = await reader.read();
         if (chunk.done) break;
+        checkDownloadLimit(offset + chunk.value.length, maxBytes);
         if (offset + chunk.value.length > bytes.length)
           throw new Error("Attachment length mismatch");
         bytes.set(chunk.value, offset);
@@ -1805,7 +1826,12 @@ export class AgentWorkplace {
         attachment: grant.attachment,
         bytes,
       };
-    } catch {
+    } catch (error) {
+      if (
+        error instanceof AgentWorkplaceError &&
+        error.code === "download_too_large"
+      )
+        throw error;
       throw new AgentWorkplaceError(
         "Attachment download integrity or transport check failed",
         { status: 0, code: "transfer_interrupted" },

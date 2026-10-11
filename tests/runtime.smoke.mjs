@@ -78,3 +78,67 @@ assert.deepEqual(ownershipRequests, [
   "https://api.example.test/v1/access/ownership/preview",
   "https://api.example.test/v1/access/ownership/confirm",
 ]);
+
+// This probe also runs from a clean packed-client installation on each supported
+// Node line. A caller ceiling must reject metadata before fetching byte grants.
+const downloadId = "11111111-1111-4111-8111-111111111111";
+let transferCalls = 0;
+const downloadClient = new AgentWorkplace({
+  baseUrl: "https://api.example.test",
+  transferFetch: async () => {
+    transferCalls++;
+    throw new Error("Unexpected byte transfer");
+  },
+  fetch: async (url) =>
+    Response.json({
+      ...(String(url).includes("/mail/")
+        ? {
+            messageId: downloadId,
+            attachment: {
+              attachmentId: downloadId,
+              ordinal: 0,
+              filename: null,
+              contentType: null,
+              disposition: null,
+              contentId: null,
+              state: "retained",
+              bytes: 262145,
+              sha256: "a".repeat(64),
+            },
+          }
+        : {
+            file: {
+              workplaceId: downloadId,
+              fileId: downloadId,
+              revisionId: downloadId,
+              version: downloadId,
+              name: "text.txt",
+              reference: `awp:file:${downloadId}:${downloadId}`,
+              revisionReference: `awp:file:${downloadId}:${downloadId}:revision:${downloadId}`,
+              byteLength: 262145,
+              contentType: "text/plain",
+              sha256: "a".repeat(64),
+              actorId: downloadId,
+              createdAt: "2026-10-10T00:00:00.000Z",
+            },
+          }),
+      url: "https://storage.example.test/private",
+      expiresAt: "2030-01-01T00:00:00Z",
+    }),
+});
+for (const operation of [
+  () =>
+    downloadClient.downloadFile(
+      { apiKey: "probe" },
+      { workplaceId: downloadId, fileId: downloadId },
+      { maxBytes: 262144 },
+    ),
+  () =>
+    downloadClient.downloadMailAttachment(
+      { apiKey: "probe" },
+      { messageId: downloadId, attachmentId: downloadId },
+      { maxBytes: 262144 },
+    ),
+])
+  await assert.rejects(operation, { code: "download_too_large", status: 0 });
+assert.equal(transferCalls, 0);
