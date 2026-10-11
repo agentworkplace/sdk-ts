@@ -1,5 +1,18 @@
 # @agent-workplace/sdk
 
+## 0.7.0
+
+### Minor Changes
+
+- Add an optional `maxBytes` ceiling to `downloadFile` and `downloadMailAttachment`.
+  Reject oversized metadata before transfer or allocation and enforce the limit
+  during streaming with a safe `download_too_large` error. Existing callers retain
+  their current limits and integrity checks.
+
+### Patch Changes
+
+- Update the standalone SDK development lock to the patched source-map-js 1.2.2.
+
 ## 0.6.0
 
 ### Minor Changes

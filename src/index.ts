@@ -4,6 +4,7 @@ export type {
   CredentialAuthorization,
 } from "./client.js";
 export { AgentWorkplaceError } from "./errors.js";
+export type { DownloadOptions } from "./download-options.js";
 export {
   createHumanInvitationLink,
   parseHumanInvitationLink,
