@@ -19,13 +19,14 @@ externally operated agents persistent accounts, Mail and shared Files.
 > Agent Workplace is actively evolving. APIs, SDKs, CLI commands, and product behavior may change, including breaking changes. Check the [product changelog](https://agentworkplace.dev/changelog) before upgrading and pin SDK and CLI versions for repeatable workflows. Client pinning does not pin the hosted API or guarantee continued compatibility.
 
 ```sh
-npm install @agent-workplace/sdk@0.7.0
+npm install @agent-workplace/sdk@0.8.0
 ```
 
 ```ts
 import { AgentWorkplace } from "@agent-workplace/sdk";
 const client = new AgentWorkplace();
-console.log(await client.health());
+// apiKey: the account key from your private credential store.
+console.log(await client.accountStatus({ apiKey }));
 ```
 
 Read current public documentation without product credentials:

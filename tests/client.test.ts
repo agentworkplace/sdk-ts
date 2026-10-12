@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import { AgentWorkplace, AgentWorkplaceError } from "../src/index.js";
-import type { AgentWorkplaceOptions, HealthResponse } from "../src/index.js";
+import type {
+  AccountAccessStatus,
+  AgentWorkplaceOptions,
+} from "../src/index.js";
 
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
@@ -11,6 +14,31 @@ function jsonResponse(body: unknown, status = 200): Response {
 }
 
 const responseRequestId = "4f641382-6a56-41f5-b418-e20309e0b168";
+
+// Transport behavior is shared; account status is a representative operation.
+const authorization = { apiKey: "private-test-key" };
+const accountStatus = {
+  accountId: "9ea2537a-ea98-4322-8c1b-c43458937c47",
+  workplaceId: "45cd98f5-fb56-4fc1-922b-c3ee80c6168e",
+  kind: "agent",
+  role: "owner",
+  state: "active",
+  workplaceState: "confirmed",
+  cleanupAt: null,
+  cleanupWarning: null,
+  starter: null,
+  free: {
+    confirmedAt: "2026-09-12T00:00:00.000Z",
+    periodStart: "2026-09-12T00:00:00.000Z",
+    periodEnd: "2026-10-12T00:00:00.000Z",
+    outboundLimit: 200,
+    inboundLimit: 1000,
+    storageLimit: "5 GB",
+    outboundUsed: 0,
+    inboundUsed: 0,
+    storageUsedBytes: 0,
+  },
+} satisfies AccountAccessStatus;
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -44,7 +72,7 @@ describe("AgentWorkplace", () => {
             { status: 429, headers: { "Retry-After": String(header) } },
           ),
       });
-      await expect(client.health()).rejects.toMatchObject({
+      await expect(client.accountStatus(authorization)).rejects.toMatchObject({
         status: 429,
         retryAfterSeconds: expected,
       });
@@ -61,7 +89,7 @@ describe("AgentWorkplace", () => {
             headers: { "Retry-After": new Date(now + 120_000).toUTCString() },
           }),
       });
-      await expect(client.health()).rejects.toMatchObject({
+      await expect(client.accountStatus(authorization)).rejects.toMatchObject({
         status: 503,
         retryAfterSeconds: 120,
       });
@@ -80,14 +108,16 @@ describe("AgentWorkplace", () => {
     },
   ])("defaults to the production API with $name", async ({ create }) => {
     const fetch = vi.fn<typeof globalThis.fetch>(async () =>
-      jsonResponse({ status: "ok" }),
+      jsonResponse(accountStatus),
     );
     vi.stubGlobal("fetch", fetch);
     const client = create();
     expect(fetch).not.toHaveBeenCalled();
-    await expect(client.health()).resolves.toEqual({ status: "ok" });
+    await expect(client.accountStatus(authorization)).resolves.toEqual(
+      accountStatus,
+    );
     expect(fetch).toHaveBeenCalledExactlyOnceWith(
-      new URL("https://api.agentworkplace.dev/health"),
+      new URL("https://api.agentworkplace.dev/v1/access/account"),
       expect.objectContaining({ redirect: "error" }),
     );
   });
@@ -95,12 +125,12 @@ describe("AgentWorkplace", () => {
   it("uses a custom fetch at the default origin without global Fetch", async () => {
     vi.stubGlobal("fetch", undefined);
     const fetch = vi.fn<typeof globalThis.fetch>(async () =>
-      jsonResponse({ status: "ok" }),
+      jsonResponse(accountStatus),
     );
     const options = { fetch } satisfies AgentWorkplaceOptions;
-    await new AgentWorkplace(options).health();
+    await new AgentWorkplace(options).accountStatus(authorization);
     expect(String(fetch.mock.calls[0]?.[0])).toBe(
-      "https://api.agentworkplace.dev/health",
+      "https://api.agentworkplace.dev/v1/access/account",
     );
   });
 
@@ -141,10 +171,12 @@ describe("AgentWorkplace", () => {
       baseUrl: "https://api.example.test",
       fetch: async function (this: unknown) {
         expect(this).toBeUndefined();
-        return Response.json({ status: "ok" });
+        return Response.json(accountStatus);
       },
     });
-    await expect(client.health()).resolves.toEqual({ status: "ok" });
+    await expect(client.accountStatus(authorization)).resolves.toEqual(
+      accountStatus,
+    );
   });
   it("constructs a client from explicit options", () => {
     const options = {
@@ -172,25 +204,27 @@ describe("AgentWorkplace", () => {
     expect(fetch).not.toHaveBeenCalled();
   });
 
-  it("requests and validates health through a normalized base URL", async () => {
+  it("requests and validates account status through a normalized base URL", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>(async () =>
-      jsonResponse({ status: "ok" }),
+      jsonResponse(accountStatus),
     );
     const client = new AgentWorkplace({
-      baseUrl: "https://api.example.com/v1",
+      baseUrl: "https://api.example.com/prefix",
       fetch,
     });
 
-    const result = await client.health();
+    const result = await client.accountStatus(authorization);
 
-    expect(result).toEqual({ status: "ok" });
-    expectTypeOf(result).toEqualTypeOf<HealthResponse>();
+    expect(result).toEqual(accountStatus);
+    expectTypeOf(result).toEqualTypeOf<AccountAccessStatus>();
     expect(fetch).toHaveBeenCalledOnce();
 
     const [url, init] = fetch.mock.calls[0] ?? [];
 
     expect(url).toBeInstanceOf(URL);
-    expect(String(url)).toBe("https://api.example.com/v1/health");
+    expect(String(url)).toBe(
+      "https://api.example.com/prefix/v1/access/account",
+    );
     expect(init?.method).toBe("GET");
     expect(init?.headers).toMatchObject({ Accept: "application/json" });
     expect((init?.headers as Record<string, string>)["X-Request-ID"]).toMatch(
@@ -200,15 +234,15 @@ describe("AgentWorkplace", () => {
 
   it("generates a different request ID for each request", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>(async () =>
-      jsonResponse({ status: "ok" }),
+      jsonResponse(accountStatus),
     );
     const client = new AgentWorkplace({
       baseUrl: "https://api.example.com",
       fetch,
     });
 
-    await client.health();
-    await client.health();
+    await client.accountStatus(authorization);
+    await client.accountStatus(authorization);
 
     const firstHeaders = fetch.mock.calls[0]?.[1]?.headers as Record<
       string,
@@ -225,17 +259,17 @@ describe("AgentWorkplace", () => {
 
   it("does not duplicate a trailing slash", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>(async () =>
-      jsonResponse({ status: "ok" }),
+      jsonResponse(accountStatus),
     );
     const client = new AgentWorkplace({
-      baseUrl: "https://api.example.com/v1/",
+      baseUrl: "https://api.example.com/prefix/",
       fetch,
     });
 
-    await client.health();
+    await client.accountStatus(authorization);
 
     expect(String(fetch.mock.calls[0]?.[0])).toBe(
-      "https://api.example.com/v1/health",
+      "https://api.example.com/prefix/v1/access/account",
     );
   });
 
@@ -245,7 +279,9 @@ describe("AgentWorkplace", () => {
       fetch: vi.fn(async () => jsonResponse({ status: "degraded" })),
     });
 
-    const error = await client.health().catch((cause: unknown) => cause);
+    const error = await client
+      .accountStatus(authorization)
+      .catch((cause: unknown) => cause);
 
     expect(error).toBeInstanceOf(AgentWorkplaceError);
     expect(error).toMatchObject({
@@ -262,7 +298,7 @@ describe("AgentWorkplace", () => {
       fetch: vi.fn(async () => new Response("not json", { status: 200 })),
     });
 
-    await expect(client.health()).rejects.toMatchObject({
+    await expect(client.accountStatus(authorization)).rejects.toMatchObject({
       status: 200,
       message: "The Agent Workplace API returned invalid JSON",
     });
@@ -279,7 +315,7 @@ describe("AgentWorkplace", () => {
       ),
     });
 
-    await expect(client.health()).rejects.toMatchObject({
+    await expect(client.accountStatus(authorization)).rejects.toMatchObject({
       name: "AgentWorkplaceError",
       status: 503,
       code: "service_unavailable",
@@ -296,7 +332,9 @@ describe("AgentWorkplace", () => {
       ),
     });
 
-    const error = await client.health().catch((cause: unknown) => cause);
+    const error = await client
+      .accountStatus(authorization)
+      .catch((cause: unknown) => cause);
 
     expect(error).toMatchObject({
       status: 500,
@@ -318,7 +356,9 @@ describe("AgentWorkplace", () => {
       ),
     });
 
-    const error = await client.health().catch((cause: unknown) => cause);
+    const error = await client
+      .accountStatus(authorization)
+      .catch((cause: unknown) => cause);
 
     expect(error).toMatchObject({
       status: 500,
@@ -335,7 +375,9 @@ describe("AgentWorkplace", () => {
       fetch: vi.fn(async () => new Response(secretBody, { status: 502 })),
     });
 
-    const error = await client.health().catch((cause: unknown) => cause);
+    const error = await client
+      .accountStatus(authorization)
+      .catch((cause: unknown) => cause);
 
     expect(error).toMatchObject({
       status: 502,
@@ -353,7 +395,7 @@ describe("AgentWorkplace", () => {
       ),
     });
 
-    await expect(client.health()).rejects.toMatchObject({
+    await expect(client.accountStatus(authorization)).rejects.toMatchObject({
       status: 200,
       requestId: responseRequestId,
     });
@@ -371,7 +413,7 @@ describe("AgentWorkplace", () => {
       ),
     });
 
-    await expect(client.health()).rejects.toMatchObject({
+    await expect(client.accountStatus(authorization)).rejects.toMatchObject({
       status: 502,
       requestId: undefined,
     });
@@ -387,10 +429,12 @@ describe("AgentWorkplace", () => {
       fetch,
     });
 
-    await expect(client.health()).rejects.toBe(networkError);
+    await expect(client.accountStatus(authorization)).rejects.toBe(
+      networkError,
+    );
     expect(fetch).toHaveBeenCalledOnce();
     expect(String(fetch.mock.calls[0]?.[0])).toBe(
-      "https://staging-api.agentworkplace.dev/health",
+      "https://staging-api.agentworkplace.dev/v1/access/account",
     );
   });
 });

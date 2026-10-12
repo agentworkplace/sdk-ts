@@ -1,9 +1,14 @@
 import { expect, test } from "vitest";
 import {
   chatAddRequestSchema,
+  chatConversationRequestSchema,
+  chatConversationSchema,
+  chatConversationWithAccountsSchema,
   chatCreateRequestSchema,
   chatDeletedOutcomeSchema,
   chatEntriesRequestSchema,
+  chatEntriesSchema,
+  chatEntriesWithAccountsSchema,
   chatEntrySchema,
   chatListRequestSchema,
   chatMembershipOutcomeSchema,
@@ -179,4 +184,83 @@ test("discovery and catch-up have bounded, explicit continuation requests", () =
     { after: "" },
   ])
     expect(chatEntriesRequestSchema.safeParse(value).success).toBe(false);
+});
+
+test("account summaries are opt-in because published clients parse responses strictly", () => {
+  const conversation = {
+    conversationId: operationId,
+    topic: null,
+    createdAt: entry.createdAt,
+    participants: [{ accountId: alice, joinedSequence: "1" }],
+    latestSequence: "1",
+  };
+  const page = { entries: [], nextAfter: null, latestSequence: "1" };
+  const summary = {
+    accountId: alice,
+    name: "Alice",
+    kind: "agent",
+    state: "active",
+  };
+  // Base schemas are what SDK 0.7.0 and earlier enforce.
+  expect(
+    chatConversationSchema.safeParse({ ...conversation, accounts: [] }).success,
+  ).toBe(false);
+  expect(chatEntriesSchema.safeParse({ ...page, accounts: [] }).success).toBe(
+    false,
+  );
+  expect(
+    chatConversationWithAccountsSchema.parse({
+      ...conversation,
+      accounts: [summary],
+    }).accounts,
+  ).toEqual([summary]);
+  expect(
+    chatEntriesWithAccountsSchema.safeParse({
+      ...page,
+      accounts: [
+        { ...summary, accountId: alice.toUpperCase() },
+        { accountId: bob, name: null, kind: "human", state: "removed" },
+      ],
+    }).success,
+  ).toBe(true);
+  for (const accounts of [
+    [summary, summary],
+    [{ ...summary, email: "alice@example.com" }],
+    [{ ...summary, role: "admin" }],
+    [{ ...summary, state: "deleted" }],
+  ])
+    expect(
+      chatEntriesWithAccountsSchema.safeParse({ ...page, accounts }).success,
+    ).toBe(false);
+  expect(
+    chatConversationWithAccountsSchema.safeParse(conversation).success,
+  ).toBe(false);
+  expect(
+    chatConversationWithAccountsSchema.safeParse({
+      ...conversation,
+      accounts: Array.from({ length: 101 }, (_, index) => ({
+        ...summary,
+        accountId: `aaaaaaaa-aaaa-4aaa-8aaa-${String(index).padStart(12, "0")}`,
+      })),
+    }).success,
+  ).toBe(false);
+
+  expect(chatConversationRequestSchema.parse({})).toEqual({});
+  expect(chatConversationRequestSchema.parse({ include: "accounts" })).toEqual({
+    include: "accounts",
+  });
+  expect(chatEntriesRequestSchema.parse({ include: "accounts" })).toEqual({
+    after: "0",
+    limit: 20,
+    include: "accounts",
+  });
+  for (const value of [
+    { include: "profiles" },
+    { include: "" },
+    { include: ["accounts"] },
+    { expand: "accounts" },
+  ]) {
+    expect(chatConversationRequestSchema.safeParse(value).success).toBe(false);
+    expect(chatEntriesRequestSchema.safeParse(value).success).toBe(false);
+  }
 });

@@ -283,16 +283,15 @@ describe.each(accessOperations)("%s transport security", (_name, operation) => {
     expect(fetch.mock.calls[0]?.[1]?.redirect).toBe("error");
   });
 });
-it("preserves non-sensitive health checks over non-loopback HTTP", async () => {
-  const fetch = vi
-    .fn<typeof globalThis.fetch>()
-    .mockResolvedValue(Response.json({ status: "ok" }));
+it("requires HTTPS or loopback HTTP even without an API key", async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>();
+  const client = new AgentWorkplace({
+    baseUrl: "http://api.example.test",
+    fetch,
+  });
+  expect("health" in client).toBe(false);
   await expect(
-    new AgentWorkplace({ baseUrl: "http://api.example.test", fetch }).health(),
-  ).resolves.toEqual({ status: "ok" });
-  expect(fetch).toHaveBeenCalledTimes(1);
-  expect(
-    new Headers(fetch.mock.calls[0]?.[1]?.headers).has("Authorization"),
-  ).toBe(false);
-  expect(fetch.mock.calls[0]?.[1]?.body).toBeUndefined();
+    client.accountStatus({ humanSession: true }),
+  ).rejects.toThrowError("HTTPS or loopback HTTP");
+  expect(fetch).not.toHaveBeenCalled();
 });

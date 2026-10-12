@@ -163,8 +163,22 @@ export const humanInvitationFileSchema = z
   .strict();
 export type HumanInvitationFile = z.infer<typeof humanInvitationFileSchema>;
 
-/** Human-only preview never exposes intended email or terminal identity details. */
-export const humanInvitationPreviewSchema = z.union([
+/** Version-1 agent handoff record, shared by SDK/CLI files and agent links. */
+export const agentInvitationFileSchema = z
+  .object({
+    version: z.literal(1),
+    kind: z.literal("invitation"),
+    origin: z.url().regex(/^https?:\/\/[^/?#@]+$/),
+    invitationId: z.uuid(),
+    workplaceId: z.uuid(),
+    accountId: z.uuid(),
+    code: invitationProofSchema,
+  })
+  .strict();
+export type AgentInvitationFile = z.infer<typeof agentInvitationFileSchema>;
+
+/** Proof-gated status preview; never exposes intended email or terminal identity details. */
+const invitationStatusPreviewSchema = z.union([
   z
     .object({
       status: z.literal("pending"),
@@ -185,11 +199,19 @@ export const humanInvitationPreviewSchema = z.union([
     .object({ status: z.enum(["expired", "revoked", "used", "unavailable"]) })
     .strict(),
 ]);
+/** Human-only preview never exposes intended email or terminal identity details. */
+export const humanInvitationPreviewSchema = invitationStatusPreviewSchema;
 export type HumanInvitationPreview = z.infer<
   typeof humanInvitationPreviewSchema
 >;
+/** Agent link-page preview; the original agent preview remains for SDK/CLI callers. */
+export const agentInvitationPreviewSchema = invitationStatusPreviewSchema;
+export type AgentInvitationPreview = z.infer<
+  typeof agentInvitationPreviewSchema
+>;
 
 export const humanInvitationAcceptancePath = "/invitations/accept";
+export const agentInvitationAcceptancePath = "/invitations/agent";
 const linkFields = [
   "v",
   "origin",
@@ -199,6 +221,13 @@ const linkFields = [
   "code",
 ] as const;
 const maximumInvitationFragmentBytes = 4096;
+interface LinkIdentity {
+  origin: string;
+  invitationId: string;
+  workplaceId: string;
+  accountId: string;
+  code: string;
+}
 
 function linkOrigin(value: string): string {
   const url = new URL(value);
@@ -216,29 +245,86 @@ function linkOrigin(value: string): string {
   return url.origin;
 }
 
+/** Throws unsafe errors; public wrappers replace them with a fixed message. */
+function createInvitationLink(
+  record: LinkIdentity,
+  dashboardOrigin: string,
+  path: string,
+): string {
+  linkOrigin(record.origin);
+  const target = linkOrigin(dashboardOrigin);
+  const fragment = new URLSearchParams({
+    v: "1",
+    origin: record.origin,
+    invitationId: record.invitationId,
+    workplaceId: record.workplaceId,
+    accountId: record.accountId,
+    code: record.code,
+  }).toString();
+  if (
+    new TextEncoder().encode(fragment).byteLength >
+    maximumInvitationFragmentBytes
+  )
+    throw new Error("Invalid size");
+  return `${target}${path}#${fragment}`;
+}
+
+/** Throws unsafe errors; public wrappers replace them with a fixed message. */
+function invitationLinkFields(
+  value: string,
+  options: { dashboardOrigin: string; apiOrigin: string },
+  path: string,
+): LinkIdentity {
+  const target = linkOrigin(options.dashboardOrigin);
+  const apiOrigin = linkOrigin(options.apiOrigin);
+  const url = new URL(value);
+  if (
+    url.origin !== target ||
+    url.username ||
+    url.password ||
+    url.search ||
+    url.pathname !== path
+  )
+    throw new Error("Invalid destination");
+  const raw = url.hash.slice(1);
+  if (
+    !raw ||
+    new TextEncoder().encode(raw).byteLength > maximumInvitationFragmentBytes
+  )
+    throw new Error("Invalid size");
+  // URLSearchParams tolerates invalid escapes/UTF-8; reject those explicitly.
+  for (const part of raw.split("&")) {
+    for (const segment of part.split("="))
+      decodeURIComponent(segment.replace(/\+/g, " "));
+  }
+  const fields = new URLSearchParams(raw);
+  if (
+    fields.size !== linkFields.length ||
+    linkFields.some((key) => fields.getAll(key).length !== 1) ||
+    fields.get("v") !== "1" ||
+    fields.get("origin") !== apiOrigin
+  )
+    throw new Error("Invalid fields");
+  return {
+    origin: fields.get("origin") ?? "",
+    invitationId: fields.get("invitationId") ?? "",
+    workplaceId: fields.get("workplaceId") ?? "",
+    accountId: fields.get("accountId") ?? "",
+    code: fields.get("code") ?? "",
+  };
+}
+
 /** Serialize the private wire handoff; never select a network destination from it. */
 export function createHumanInvitationLink(
   record: HumanInvitationFile,
   options: { dashboardOrigin: string },
 ): string {
   try {
-    const parsed = humanInvitationFileSchema.parse(record);
-    linkOrigin(parsed.origin);
-    const target = linkOrigin(options.dashboardOrigin);
-    const fragment = new URLSearchParams({
-      v: "1",
-      origin: parsed.origin,
-      invitationId: parsed.invitationId,
-      workplaceId: parsed.workplaceId,
-      accountId: parsed.accountId,
-      code: parsed.code,
-    }).toString();
-    if (
-      new TextEncoder().encode(fragment).byteLength >
-      maximumInvitationFragmentBytes
-    )
-      throw new Error("Invalid size");
-    return `${target}${humanInvitationAcceptancePath}#${fragment}`;
+    return createInvitationLink(
+      humanInvitationFileSchema.parse(record),
+      options.dashboardOrigin,
+      humanInvitationAcceptancePath,
+    );
   } catch {
     // Validation errors can contain the proof. Only this fixed message is public.
     throw new TypeError("Invalid human invitation link");
@@ -251,48 +337,46 @@ export function parseHumanInvitationLink(
   options: { dashboardOrigin: string; apiOrigin: string },
 ): HumanInvitationFile {
   try {
-    const target = linkOrigin(options.dashboardOrigin);
-    const apiOrigin = linkOrigin(options.apiOrigin);
-    const url = new URL(value);
-    if (
-      url.origin !== target ||
-      url.username ||
-      url.password ||
-      url.search ||
-      url.pathname !== humanInvitationAcceptancePath
-    )
-      throw new Error("Invalid destination");
-    const raw = url.hash.slice(1);
-    if (
-      !raw ||
-      new TextEncoder().encode(raw).byteLength > maximumInvitationFragmentBytes
-    )
-      throw new Error("Invalid size");
-    // URLSearchParams tolerates invalid escapes/UTF-8; reject those explicitly.
-    for (const part of raw.split("&")) {
-      for (const segment of part.split("="))
-        decodeURIComponent(segment.replace(/\+/g, " "));
-    }
-    const fields = new URLSearchParams(raw);
-    if (
-      fields.size !== linkFields.length ||
-      linkFields.some((key) => fields.getAll(key).length !== 1) ||
-      fields.get("v") !== "1"
-    )
-      throw new Error("Invalid fields");
-    const record = humanInvitationFileSchema.parse({
+    return humanInvitationFileSchema.parse({
       version: 1,
       kind: "human-invitation",
-      origin: fields.get("origin"),
-      invitationId: fields.get("invitationId"),
-      workplaceId: fields.get("workplaceId"),
-      accountId: fields.get("accountId"),
-      code: fields.get("code"),
+      ...invitationLinkFields(value, options, humanInvitationAcceptancePath),
     });
-    if (record.origin !== apiOrigin) throw new Error("Invalid origin");
-    return record;
   } catch {
     throw new TypeError("Invalid human invitation link");
+  }
+}
+
+/** Serialize an agent handoff; the link is a complete bearer credential. */
+export function createAgentInvitationLink(
+  record: AgentInvitationFile,
+  options: { dashboardOrigin: string },
+): string {
+  try {
+    return createInvitationLink(
+      agentInvitationFileSchema.parse(record),
+      options.dashboardOrigin,
+      agentInvitationAcceptancePath,
+    );
+  } catch {
+    // Validation errors can contain the proof. Only this fixed message is public.
+    throw new TypeError("Invalid agent invitation link");
+  }
+}
+
+/** Decode once and bind to caller-owned origins; never select a destination from it. */
+export function parseAgentInvitationLink(
+  value: string,
+  options: { dashboardOrigin: string; apiOrigin: string },
+): AgentInvitationFile {
+  try {
+    return agentInvitationFileSchema.parse({
+      version: 1,
+      kind: "invitation",
+      ...invitationLinkFields(value, options, agentInvitationAcceptancePath),
+    });
+  } catch {
+    throw new TypeError("Invalid agent invitation link");
   }
 }
 

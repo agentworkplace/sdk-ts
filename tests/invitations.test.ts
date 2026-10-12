@@ -105,6 +105,29 @@ describe("invitation SDK transport", () => {
       expect(JSON.parse(init!.body as string)).toEqual(input);
     },
   );
+  it.each(["expired", "revoked", "used", "unavailable"])(
+    "inspects agent link %s status without sending account credentials or URL secrets",
+    async (status) => {
+      const fetch = vi
+        .fn<typeof globalThis.fetch>()
+        .mockResolvedValue(Response.json({ status }));
+      const client = new AgentWorkplace({
+        baseUrl: "https://api.example.test",
+        fetch,
+      });
+      const input = { invitationId: invitation.id, code };
+      expect(await client.previewAgentInvitationStatus(input)).toEqual({
+        status,
+      });
+      const [url, init] = fetch.mock.calls[0]!;
+      expect(String(url)).toBe(
+        "https://api.example.test/v1/invitations/agent/preview",
+      );
+      expect(init).toMatchObject({ method: "POST", redirect: "error" });
+      expect(new Headers(init!.headers).has("Authorization")).toBe(false);
+      expect(JSON.parse(init!.body as string)).toEqual(input);
+    },
+  );
   it("rejects terminal metadata instead of exposing an expanded response", async () => {
     const client = new AgentWorkplace({
       baseUrl: "https://api.example.test",

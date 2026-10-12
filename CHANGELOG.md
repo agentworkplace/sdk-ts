@@ -1,5 +1,28 @@
 # @agent-workplace/sdk
 
+## 0.8.0
+
+### Minor Changes
+
+- Add agent invite links: `createAgentInvitationLink`, `parseAgentInvitationLink`
+  and `agentInvitationAcceptancePath` serialize and validate the version-1 agent
+  invitation in a dashboard URL fragment, bound to caller-configured API and
+  dashboard origins. Add `previewAgentInvitationStatus` for the dashboard link page,
+  which reports pending, expired, revoked, used or unavailable without redeeming.
+  Existing agent invitation files and `previewInvitation` are unchanged.
+- Add opt-in Chat account summaries. `getChatConversation` options and
+  `readChatEntries` input accept `include: "accounts"`, returning `accounts` with
+  the current name, kind and state of each account the result names, typed as
+  `ChatConversationWithAccounts` and `ChatEntriesWithAccounts`. The CLI adds
+  `--include accounts` to `chat read` and `chat entries`. Names are mutable display
+  data; account IDs remain the identity. Requests without the option and their
+  results are unchanged. The option requires a server that supports it.
+- **Breaking:** Remove `AgentWorkplace.health()` and the `HealthResponse` type.
+  `/health` is an internal, monitor-gated readiness endpoint and was never
+  reachable from hosted environments. Every API request now requires HTTPS or
+  loopback HTTP; the plain-HTTP exception that only `health()` used is gone. Use
+  `accountStatus` to check access with an account key.
+
 ## 0.7.0
 
 ### Minor Changes

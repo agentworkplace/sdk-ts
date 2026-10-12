@@ -1,5 +1,11 @@
-import { expect, test, vi } from "vitest";
+import { expect, expectTypeOf, test, vi } from "vitest";
 import { AgentWorkplace } from "../src/client.js";
+import type {
+  ChatConversation,
+  ChatConversationWithAccounts,
+  ChatEntries,
+  ChatEntriesWithAccounts,
+} from "../src/index.js";
 
 const conversationId = "11111111-1111-4111-8111-111111111111";
 const accountId = "22222222-2222-4222-8222-222222222222";
@@ -22,6 +28,7 @@ const message = {
   text: "é\n<safe>",
   references: [],
 };
+const summary = { accountId, name: "Reviewer", kind: "agent", state: "active" };
 const membership = { conversationId, changed: false, entry: null };
 const deleted = { conversationId, state: "deleted", deletedAt: createdAt };
 const authorization = { apiKey: "test-key" };
@@ -84,6 +91,33 @@ test("all Chat methods preserve routes, operation identity, lossless sequences a
           authorization,
           conversationId,
           { after: "9007199254740992", limit: 1 },
+          options,
+        ),
+    },
+    {
+      path: `/${conversationId}?include=accounts`,
+      method: "GET",
+      response: { ...conversation, accounts: [summary] },
+      invoke: () =>
+        client.getChatConversation(authorization, conversationId, {
+          ...options,
+          include: "accounts",
+        }),
+    },
+    {
+      path: `/${conversationId}/entries?after=0&limit=20&include=accounts`,
+      method: "GET",
+      response: {
+        entries: [message],
+        nextAfter: null,
+        latestSequence: message.sequence,
+        accounts: [summary],
+      },
+      invoke: () =>
+        client.readChatEntries(
+          authorization,
+          conversationId,
+          { include: "accounts" },
           options,
         ),
     },
@@ -231,4 +265,57 @@ test("malformed Chat responses never retain private text in validation causes", 
   expect(error).toMatchObject({ name: "AgentWorkplaceError", status: 200 });
   expect((error as Error).cause).toBeUndefined();
   expect(String(error)).not.toContain("private-text");
+});
+
+test("account summaries are parsed only when requested, preserving older response shapes", async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>();
+  const client = new AgentWorkplace({ fetch });
+  const page = { entries: [message], nextAfter: null, latestSequence: "1" };
+  // An unrequested field still fails strict validation, as in earlier SDKs.
+  fetch.mockResolvedValueOnce(Response.json({ ...conversation, accounts: [] }));
+  await expect(
+    client.getChatConversation(authorization, conversationId),
+  ).rejects.toMatchObject({ name: "AgentWorkplaceError" });
+  // A server that ignores the option cannot satisfy a request for summaries.
+  fetch.mockResolvedValueOnce(Response.json(page));
+  await expect(
+    client.readChatEntries(authorization, conversationId, {
+      include: "accounts",
+    }),
+  ).rejects.toMatchObject({ name: "AgentWorkplaceError" });
+  expect(() =>
+    client.getChatConversation(authorization, conversationId, {
+      include: "profiles" as "accounts",
+    }),
+  ).toThrow(TypeError);
+  expect(() =>
+    client.readChatEntries(authorization, conversationId, {
+      include: "profiles" as "accounts",
+    }),
+  ).toThrow(TypeError);
+  expect(fetch).toHaveBeenCalledTimes(2);
+});
+
+test("include selects the account-summary return types", () => {
+  const client = new AgentWorkplace({ fetch: vi.fn() });
+  // Type assertions only; calling these would send requests.
+  const assertions = () => {
+    expectTypeOf(
+      client.getChatConversation(authorization, conversationId),
+    ).resolves.toEqualTypeOf<ChatConversation>();
+    expectTypeOf(
+      client.getChatConversation(authorization, conversationId, {
+        include: "accounts",
+      }),
+    ).resolves.toEqualTypeOf<ChatConversationWithAccounts>();
+    expectTypeOf(
+      client.readChatEntries(authorization, conversationId, { after: "1" }),
+    ).resolves.toEqualTypeOf<ChatEntries>();
+    expectTypeOf(
+      client.readChatEntries(authorization, conversationId, {
+        include: "accounts",
+      }),
+    ).resolves.toEqualTypeOf<ChatEntriesWithAccounts>();
+  };
+  expect(assertions).toBeTypeOf("function");
 });
