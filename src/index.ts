@@ -6,10 +6,15 @@ export type {
 export { AgentWorkplaceError } from "./errors.js";
 export type { DownloadOptions } from "./download-options.js";
 export {
+  agentInvitationAcceptancePath,
+  createAgentInvitationLink,
   createHumanInvitationLink,
+  parseAgentInvitationLink,
   parseHumanInvitationLink,
 } from "./contracts/invitations.js";
 export type {
+  AgentInvitationFile,
+  AgentInvitationPreview,
   HumanInvitationPreview,
   InvitationNotificationStatus,
 } from "./contracts/invitations.js";
@@ -22,7 +27,6 @@ export type {
   DocumentationReadResult,
 } from "./documentation.js";
 
-export type { HealthResponse } from "./contracts/health.js";
 export type {
   FeedbackSubmission,
   FeedbackReceipt,
@@ -268,6 +272,8 @@ export type {
   ChatReference,
   ChatParticipant,
   ChatConversation,
+  ChatConversationWithAccounts,
+  ChatAccountSummary,
   ChatMessage,
   ChatEntry,
   ChatCreateRequest,
@@ -283,4 +289,5 @@ export type {
   ChatList,
   ChatEntriesRequest,
   ChatEntries,
+  ChatEntriesWithAccounts,
 } from "./contracts/chat.js";

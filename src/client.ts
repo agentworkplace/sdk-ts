@@ -1,11 +1,14 @@
 import {
   chatAddRequestSchema,
+  chatConversationRequestSchema,
   chatConversationSchema,
+  chatConversationWithAccountsSchema,
   chatCreateOutcomeSchema,
   chatCreateRequestSchema,
   chatDeleteOutcomeSchema,
   chatEntriesRequestSchema,
   chatEntriesSchema,
+  chatEntriesWithAccountsSchema,
   chatLeaveRequestSchema,
   chatListRequestSchema,
   chatListSchema,
@@ -14,7 +17,11 @@ import {
   chatPostRequestSchema,
   chatRemoveRequestSchema,
   type ChatAddRequest,
+  type ChatConversation,
+  type ChatConversationWithAccounts,
   type ChatCreateRequest,
+  type ChatEntries,
+  type ChatEntriesWithAccounts,
   type ChatEntriesRequest,
   type ChatLeaveRequest,
   type ChatListRequest,
@@ -142,6 +149,7 @@ import {
   invitationNotificationStatusSchema,
   invitationPreviewSchema,
   humanInvitationPreviewSchema,
+  agentInvitationPreviewSchema,
   invitationAdmissionSchema,
   invitationCanceledSchema,
   type CreateAgentInvitationRequest,
@@ -217,13 +225,11 @@ import {
   humanAccessStatusSchema,
 } from "./contracts/access.js";
 import { apiErrorResponseSchema } from "./contracts/errors.js";
-import { healthResponseSchema } from "./contracts/health.js";
 import {
   feedbackReceiptSchema,
   feedbackSubmissionSchema,
   type FeedbackSubmission,
 } from "./contracts/feedback.js";
-import type { HealthResponse } from "./contracts/health.js";
 
 import { AgentWorkplaceError } from "./errors.js";
 
@@ -364,14 +370,6 @@ export class AgentWorkplace {
     this.#transferFetch = transferFetch;
   }
 
-  async health(): Promise<HealthResponse> {
-    return this.#request(
-      "health",
-      (value) => healthResponseSchema.parse(value),
-      { allowInsecureHttp: true },
-    );
-  }
-
   listChatConversations(
     authorization: CredentialAuthorization,
     input: ChatListRequest = {},
@@ -413,17 +411,45 @@ export class AgentWorkplace {
     );
   }
 
+  /** `include: "accounts"` adds current name, kind, and state for each
+   * participant. Names are mutable, untrusted labels; account IDs identify. */
   getChatConversation(
     authorization: CredentialAuthorization,
     conversationId: string,
-    options: { signal?: AbortSignal } = {},
-  ) {
+    options: { signal?: AbortSignal; include: "accounts" },
+  ): Promise<ChatConversationWithAccounts>;
+  getChatConversation(
+    authorization: CredentialAuthorization,
+    conversationId: string,
+    options?: { signal?: AbortSignal; include?: undefined },
+  ): Promise<ChatConversation>;
+  getChatConversation(
+    authorization: CredentialAuthorization,
+    conversationId: string,
+    options?: { signal?: AbortSignal; include?: "accounts" },
+  ): Promise<ChatConversation | ChatConversationWithAccounts>;
+  getChatConversation(
+    authorization: CredentialAuthorization,
+    conversationId: string,
+    options: { signal?: AbortSignal; include?: "accounts" } = {},
+  ): Promise<ChatConversation | ChatConversationWithAccounts> {
     const id =
       chatConversationSchema.shape.conversationId.safeParse(conversationId);
     if (!id.success) throw new TypeError("Invalid conversation ID");
+    const parsed = chatConversationRequestSchema.safeParse({
+      include: options.include,
+    });
+    if (!parsed.success) throw new TypeError("Invalid Chat request");
+    const query = parsed.data.include
+      ? `?${new URLSearchParams({ include: parsed.data.include })}`
+      : "";
     return this.#request(
-      `v1/chat/conversations/${encodeURIComponent(id.data)}`,
-      (value) => chatConversationSchema.parse(value),
+      `v1/chat/conversations/${encodeURIComponent(id.data)}${query}`,
+      (value) =>
+        (parsed.data.include
+          ? chatConversationWithAccountsSchema
+          : chatConversationSchema
+        ).parse(value),
       {
         ...this.#credentialAuthorization(authorization),
         sensitiveResponse: true,
@@ -432,12 +458,32 @@ export class AgentWorkplace {
     );
   }
 
+  /** `include: "accounts"` adds current name, kind, and state for each
+   * account on the page, within the same byte bound. Account IDs identify. */
+  readChatEntries(
+    authorization: CredentialAuthorization,
+    conversationId: string,
+    input: ChatEntriesRequest & { include: "accounts" },
+    options?: { signal?: AbortSignal },
+  ): Promise<ChatEntriesWithAccounts>;
+  readChatEntries(
+    authorization: CredentialAuthorization,
+    conversationId: string,
+    input?: ChatEntriesRequest & { include?: undefined },
+    options?: { signal?: AbortSignal },
+  ): Promise<ChatEntries>;
+  readChatEntries(
+    authorization: CredentialAuthorization,
+    conversationId: string,
+    input?: ChatEntriesRequest,
+    options?: { signal?: AbortSignal },
+  ): Promise<ChatEntries | ChatEntriesWithAccounts>;
   readChatEntries(
     authorization: CredentialAuthorization,
     conversationId: string,
     input: ChatEntriesRequest = {},
     options: { signal?: AbortSignal } = {},
-  ) {
+  ): Promise<ChatEntries | ChatEntriesWithAccounts> {
     const id =
       chatConversationSchema.shape.conversationId.safeParse(conversationId);
     if (!id.success) throw new TypeError("Invalid conversation ID");
@@ -448,7 +494,11 @@ export class AgentWorkplace {
       if (value !== undefined) query.set(key, String(value));
     return this.#request(
       `v1/chat/conversations/${encodeURIComponent(id.data)}/entries?${query}`,
-      (value) => chatEntriesSchema.parse(value),
+      (value) =>
+        (parsed.data.include
+          ? chatEntriesWithAccountsSchema
+          : chatEntriesSchema
+        ).parse(value),
       {
         ...this.#credentialAuthorization(authorization),
         sensitiveResponse: true,
@@ -835,6 +885,17 @@ export class AgentWorkplace {
     return this.#request(
       "v1/invitations/human/preview",
       (value) => humanInvitationPreviewSchema.parse(value),
+      {
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    );
+  }
+  /** Status for the dashboard agent link page; it never redeems or recovers. */
+  previewAgentInvitationStatus(input: InvitationPreviewRequest) {
+    return this.#request(
+      "v1/invitations/agent/preview",
+      (value) => agentInvitationPreviewSchema.parse(value),
       {
         method: "POST",
         body: JSON.stringify(input),
@@ -2488,7 +2549,6 @@ export class AgentWorkplace {
       method?: string;
       body?: string;
       apiKey?: string;
-      allowInsecureHttp?: boolean;
       signal?: AbortSignal;
       credentials?: "include" | "omit";
       /** Only operations explicitly returning 204 may bypass JSON parsing. */
@@ -2497,7 +2557,7 @@ export class AgentWorkplace {
       sensitiveResponse?: boolean;
     } = {},
   ): Promise<T> {
-    if (!options.allowInsecureHttp && !secureTransport(this.#baseUrl))
+    if (!secureTransport(this.#baseUrl))
       throw new TypeError(
         "Signup and authenticated operations require HTTPS or loopback HTTP",
       );

@@ -1,14 +1,40 @@
 import assert from "node:assert/strict";
 import { AgentWorkplace, DocumentationClient } from "../dist/index.js";
 
+const accountStatus = {
+  accountId: "11111111-1111-4111-8111-111111111111",
+  workplaceId: "22222222-2222-4222-8222-222222222222",
+  kind: "agent",
+  role: "owner",
+  state: "active",
+  workplaceState: "confirmed",
+  cleanupAt: null,
+  cleanupWarning: null,
+  starter: null,
+  free: {
+    confirmedAt: "2026-09-17T00:00:00.000Z",
+    periodStart: "2026-09-17T00:00:00.000Z",
+    periodEnd: "2026-10-17T00:00:00.000Z",
+    outboundUsed: 0,
+    inboundUsed: 0,
+    storageUsedBytes: 0,
+    outboundLimit: 200,
+    inboundLimit: 1000,
+    storageLimit: "5 GB",
+  },
+};
 const originalFetch = globalThis.fetch;
 const requests = [];
 const transport = async (input, init) => {
   const url = String(input);
   requests.push(url);
-  if (url.endsWith("/health")) {
+  if (url.endsWith("/v1/access/account")) {
     assert.equal(init.redirect, "error");
-    return Response.json({ status: "ok" });
+    assert.equal(
+      new Headers(init.headers).get("Authorization"),
+      "Bearer runtime-probe",
+    );
+    return Response.json(accountStatus);
   }
   assert.equal(url, "https://docs.agentworkplace.dev/docs-index.json");
   assert.equal(init.credentials, "omit");
@@ -22,7 +48,10 @@ try {
     new AgentWorkplace({}),
     new AgentWorkplace({ fetch: transport }),
   ])
-    assert.deepEqual(await client.health(), { status: "ok" });
+    assert.deepEqual(
+      await client.accountStatus({ apiKey: "runtime-probe" }),
+      accountStatus,
+    );
   for (const docs of [
     new DocumentationClient(),
     new DocumentationClient({}),
@@ -30,7 +59,7 @@ try {
   ])
     assert.deepEqual(await docs.list(), []);
   assert.deepEqual(requests, [
-    ...Array(3).fill("https://api.agentworkplace.dev/health"),
+    ...Array(3).fill("https://api.agentworkplace.dev/v1/access/account"),
     ...Array(3).fill("https://docs.agentworkplace.dev/docs-index.json"),
   ]);
 } finally {
@@ -40,11 +69,14 @@ try {
 const client = new AgentWorkplace({
   baseUrl: "https://api.example.test",
   fetch: async () =>
-    new Response(JSON.stringify({ status: "ok" }), {
+    new Response(JSON.stringify(accountStatus), {
       headers: { "content-type": "application/json" },
     }),
 });
-assert.deepEqual(await client.health(), { status: "ok" });
+assert.deepEqual(
+  await client.accountStatus({ apiKey: "runtime-probe" }),
+  accountStatus,
+);
 
 const ownershipRequests = [];
 const humanClient = new AgentWorkplace({

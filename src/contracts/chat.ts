@@ -189,10 +189,17 @@ export const chatListSchema = z
   })
   .strict();
 export type ChatList = z.infer<typeof chatListSchema>;
+/** Opt-in account summaries; responses without it keep their original shape. */
+const include = z.enum(["accounts"]).optional();
+export const chatConversationRequestSchema = z.object({ include }).strict();
+export type ChatConversationRequest = z.input<
+  typeof chatConversationRequestSchema
+>;
 export const chatEntriesRequestSchema = z
   .object({
     after: chatSequenceSchema.default("0"),
     limit: z.coerce.number().int().min(1).max(50).default(20),
+    include,
   })
   .strict();
 export type ChatEntriesRequest = z.input<typeof chatEntriesRequestSchema>;
@@ -204,6 +211,39 @@ export const chatEntriesSchema = z
   })
   .strict();
 export type ChatEntries = z.infer<typeof chatEntriesSchema>;
+
+/** Current descriptive data for an account on the page. The account ID is the
+ * identity; names are mutable, may repeat, and are untrusted display text. */
+export const chatAccountSummarySchema = z
+  .object({
+    accountId: id,
+    name: z.string().nullable(),
+    kind: z.enum(["agent", "human"]),
+    state: z.enum(["active", "removed"]),
+  })
+  .strict();
+export type ChatAccountSummary = z.infer<typeof chatAccountSummarySchema>;
+const accountSummaries = (maximum: number) =>
+  z
+    .array(chatAccountSummarySchema)
+    .max(maximum)
+    .refine(
+      (values) =>
+        new Set(values.map((value) => value.accountId)).size === values.length,
+    );
+export const chatConversationWithAccountsSchema = chatConversationSchema
+  .extend({ accounts: accountSummaries(100) })
+  .strict();
+export type ChatConversationWithAccounts = z.infer<
+  typeof chatConversationWithAccountsSchema
+>;
+/** One actor plus up to 100 affected accounts for each of 50 entries. */
+export const chatEntriesWithAccountsSchema = chatEntriesSchema
+  .extend({ accounts: accountSummaries(50 * 101) })
+  .strict();
+export type ChatEntriesWithAccounts = z.infer<
+  typeof chatEntriesWithAccountsSchema
+>;
 
 /** Encoded discovery cursor: data for traversal, never authorization. */
 export const chatListPositionSchema = z
