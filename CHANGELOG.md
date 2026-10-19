@@ -1,5 +1,17 @@
 # @agent-workplace/sdk
 
+## 0.9.0
+
+### Minor Changes
+
+- Add MCP agent grants. `CredentialAuthorization` accepts `{ accessToken }` for an
+  agent grant access token, sent as a bearer credential. `listAgentGrants` and
+  `revokeAgentGrant` list and revoke an agent's grants with its key or a dashboard
+  session; grant tokens cannot manage grants. `getOAuthConsentDetails`,
+  `decideOAuthConsent`, `enterOAuthDeviceCode` and `decideOAuthDeviceCode` serve
+  the dashboard's consent and device pages. `AgentWorkplaceError` exposes `scopes`
+  with the `insufficient_scope` code, naming the grant scopes an operation needs.
+
 ## 0.8.0
 
 ### Minor Changes

@@ -14,6 +14,8 @@ export const commonApiErrorCodes = {
 export const apiErrorSchema = z.object({
   code: apiErrorCodeSchema,
   choiceRevision: z.number().int().nonnegative().optional(),
+  /** Scopes an agent grant needs for the operation, with `insufficient_scope`. */
+  scopes: z.array(z.string().min(1)).optional(),
   message: z.string().min(1),
 });
 

@@ -226,6 +226,18 @@ import {
 } from "./contracts/access.js";
 import { apiErrorResponseSchema } from "./contracts/errors.js";
 import {
+  agentGrantListSchema,
+  agentGrantRevokedSchema,
+  oauthConsentDecisionSchema,
+  oauthConsentDetailsSchema,
+  oauthConsentResultSchema,
+  oauthDeviceDecisionSchema,
+  oauthDeviceDetailsSchema,
+  oauthDeviceResultSchema,
+  type OAuthConsentDecision,
+  type OAuthDeviceDecision,
+} from "./contracts/agent-grants.js";
+import {
   feedbackReceiptSchema,
   feedbackSubmissionSchema,
   type FeedbackSubmission,
@@ -242,8 +254,9 @@ export interface AgentWorkplaceOptions {
   transferFetch?: typeof globalThis.fetch;
 }
 
+/** An agent key, an MCP agent grant access token, or the dashboard session. */
 export type CredentialAuthorization =
-  { apiKey: string } | { humanSession: true };
+  { apiKey: string } | { accessToken: string } | { humanSession: true };
 
 type ResponseParser<T> = (value: unknown) => T;
 
@@ -2522,6 +2535,72 @@ export class AgentWorkplace {
       },
     );
   }
+  /** Active MCP agent grants of an agent, for the agent's key or an owner or
+   * admin's dashboard session. Grant tokens cannot manage grants. */
+  listAgentGrants(authorization: CredentialAuthorization, accountId: string) {
+    return this.#request(
+      `v1/accounts/${encodeURIComponent(accountId)}/grants`,
+      (value) => agentGrantListSchema.parse(value),
+      this.#credentialAuthorization(authorization),
+    );
+  }
+  revokeAgentGrant(
+    authorization: CredentialAuthorization,
+    accountId: string,
+    grantId: string,
+  ) {
+    return this.#request(
+      `v1/accounts/${encodeURIComponent(accountId)}/grants/${encodeURIComponent(grantId)}`,
+      (value) => agentGrantRevokedSchema.parse(value),
+      { ...this.#credentialAuthorization(authorization), method: "DELETE" },
+    );
+  }
+  /** Dashboard consent: the API verifies the authorization query it signed. */
+  getOAuthConsentDetails(query: string) {
+    return this.#request(
+      "v1/oauth/consent/details",
+      (value) => oauthConsentDetailsSchema.parse(value),
+      {
+        credentials: "include",
+        method: "POST",
+        body: JSON.stringify({ query }),
+      },
+    );
+  }
+  decideOAuthConsent(decision: OAuthConsentDecision) {
+    return this.#request(
+      "v1/oauth/consent",
+      (value) => oauthConsentResultSchema.parse(value),
+      {
+        credentials: "include",
+        method: "POST",
+        body: JSON.stringify(oauthConsentDecisionSchema.parse(decision)),
+      },
+    );
+  }
+  /** Dashboard device entry claims the code for the signed-in session. */
+  enterOAuthDeviceCode(userCode: string) {
+    return this.#request(
+      "v1/oauth/device",
+      (value) => oauthDeviceDetailsSchema.parse(value),
+      {
+        credentials: "include",
+        method: "POST",
+        body: JSON.stringify({ userCode }),
+      },
+    );
+  }
+  decideOAuthDeviceCode(decision: OAuthDeviceDecision) {
+    return this.#request(
+      "v1/oauth/device/decision",
+      (value) => oauthDeviceResultSchema.parse(value),
+      {
+        credentials: "include",
+        method: "POST",
+        body: JSON.stringify(oauthDeviceDecisionSchema.parse(decision)),
+      },
+    );
+  }
   beginKeyRotation(apiKey: string, operationId: string, name: string) {
     return this.#request(
       "v1/access/keys/rotate",
@@ -2537,9 +2616,10 @@ export class AgentWorkplace {
     );
   }
   #credentialAuthorization(authorization: CredentialAuthorization) {
-    return "apiKey" in authorization
-      ? { apiKey: authorization.apiKey }
-      : { credentials: "include" as const };
+    if ("apiKey" in authorization) return { apiKey: authorization.apiKey };
+    if ("accessToken" in authorization)
+      return { apiKey: authorization.accessToken };
+    return { credentials: "include" as const };
   }
 
   async #request<T>(
@@ -2624,6 +2704,9 @@ export class AgentWorkplace {
           status: response.status,
           code: apiError.data.error.code,
           choiceRevision: apiError.data.error.choiceRevision,
+          ...(apiError.data.error.scopes
+            ? { scopes: apiError.data.error.scopes }
+            : {}),
           retryAfterSeconds,
           requestId: returnedRequestId,
         });
