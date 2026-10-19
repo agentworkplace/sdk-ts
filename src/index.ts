@@ -291,3 +291,13 @@ export type {
   ChatEntries,
   ChatEntriesWithAccounts,
 } from "./contracts/chat.js";
+
+export type {
+  AgentGrantList,
+  AgentGrantMetadata,
+  AgentGrantScope,
+  OAuthConsentDecision,
+  OAuthConsentDetails,
+  OAuthDeviceDecision,
+  OAuthDeviceDetails,
+} from "./contracts/agent-grants.js";
