@@ -1,5 +1,11 @@
 # @agent-workplace/sdk
 
+## 0.9.1
+
+### Patch Changes
+
+- Update Zod to 4.6.6 to reject oversized constrained collections before validating their elements.
+
 ## 0.9.0
 
 ### Minor Changes
