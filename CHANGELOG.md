@@ -1,5 +1,27 @@
 # @agent-workplace/sdk
 
+## 0.10.0
+
+### Minor Changes
+
+- Add the Files contract additions:
+
+  - `listFilesTree` takes `order` (`name` or `changed`) and `direction`, paged
+    with `cursor`, alongside the default identity order.
+  - `listTrashedFiles` takes `query` to keep names containing some text.
+  - `searchFiles` searches names across the workplace, filtered by `kind` and
+    `changedSince`, with the same ordering.
+  - `listFilesActivity` pages one entry's activity.
+  - `beginFileCopy` and `copyFile` copy a file revision on the server into a new
+    file, without downloading and uploading its bytes.
+  - `listFilePreviews` returns service-rendered previews for up to 50 retained
+    revisions.
+  - `getFileDownloadGrant` takes `disposition: "attachment"` to ask storage to
+    download rather than display.
+
+  The new request and result types are exported, along with
+  `parseFileCopyRequest`.
+
 ## 0.9.1
 
 ### Patch Changes
