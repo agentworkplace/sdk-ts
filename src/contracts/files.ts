@@ -59,6 +59,24 @@ export const beginFileUploadRequestSchema = z
 export type BeginFileUploadRequest = z.infer<
   typeof beginFileUploadRequestSchema
 >;
+/** Copy one retained revision into a new file; the service moves the bytes. */
+export const beginFileCopyRequestSchema = z
+  .object({
+    workplaceId: z.uuid(),
+    operationId: z.uuid(),
+    fileId: z.uuid(),
+    /** The exact revision to copy, so retries stay deterministic. */
+    revisionId: z.uuid(),
+    target: z
+      .object({
+        name: fileNameSchema,
+        parentId: z.uuid().nullable().optional(),
+      })
+      .strict(),
+    expiresAt: z.iso.datetime(),
+  })
+  .strict();
+export type BeginFileCopyRequest = z.infer<typeof beginFileCopyRequestSchema>;
 
 export const fileUploadRefSchema = z
   .object({ workplaceId: z.uuid(), uploadId: z.uuid() })
@@ -152,6 +170,15 @@ export const fileDownloadGrantSchema = z.object({
   expiresAt: z.iso.datetime(),
 });
 export type FileDownloadGrant = z.infer<typeof fileDownloadGrantSchema>;
+/** `attachment` asks storage to send a download disposition with the file name. */
+export const fileDownloadDispositionSchema = z.enum(["inline", "attachment"]);
+export type FileDownloadDisposition = z.infer<
+  typeof fileDownloadDispositionSchema
+>;
+export const fileDownloadRequestSchema = fileRefSchema
+  .extend({ disposition: fileDownloadDispositionSchema.default("inline") })
+  .strict();
+export type FileDownloadRequest = z.input<typeof fileDownloadRequestSchema>;
 
 export const fileHistoryRequestSchema = fileListRequestSchema.extend({
   fileId: z.uuid(),
@@ -212,21 +239,97 @@ export const filesEntrySchema = z.object({
   actorId: z.uuid(),
   changedAt: z.iso.datetime(),
   reference: z.string(),
+  /** Current revision fields; null for folders. */
+  revisionId: z.uuid().nullable(),
+  contentType: z.string().nullable(),
+  byteLength: z.number().int().nonnegative().nullable(),
+  sha256: sha256.nullable(),
 });
 export type FilesEntry = z.infer<typeof filesEntrySchema>;
+/** An opaque keyset cursor for ordered listings. */
+const filesOrderedCursorSchema = z
+  .string()
+  .min(1)
+  .max(512)
+  .regex(/^[A-Za-z0-9_-]+$/);
+export const filesOrderSchema = z.enum(["name", "changedAt"]);
+export type FilesOrder = z.infer<typeof filesOrderSchema>;
+export const filesDirectionSchema = z.enum(["asc", "desc"]);
+export type FilesDirection = z.infer<typeof filesDirectionSchema>;
 export const filesTreeRequestSchema = z
   .object({
     workplaceId: z.uuid(),
     parentId: z.uuid().nullable().default(null),
     after: z.uuid().optional(),
+    order: filesOrderSchema.optional(),
+    direction: filesDirectionSchema.optional(),
+    cursor: filesOrderedCursorSchema.optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
   })
+  // `after` pages the default identity order and `cursor` an explicit order;
+  // the backend rejects mixing them. No refinement here, so callers can extend.
   .strict();
+export type FilesTreeRequest = z.input<typeof filesTreeRequestSchema>;
 export const filesTreeSchema = z.object({
   entries: z.array(filesEntrySchema),
-  nextCursor: z.uuid().nullable(),
+  /** A UUID in the default order; an opaque cursor when `order` is set. */
+  nextCursor: z.string().min(1).max(512).nullable(),
 });
 export type FilesTree = z.infer<typeof filesTreeSchema>;
+export const filesSearchRequestSchema = z
+  .object({
+    workplaceId: z.uuid(),
+    /** Case-insensitive name containment; omitted lists every live entry. */
+    query: z.string().trim().min(1).max(255).optional(),
+    kind: z.enum(["file", "folder"]).optional(),
+    order: filesOrderSchema.default("name"),
+    direction: filesDirectionSchema.optional(),
+    /** Only entries changed at or after this time. */
+    changedSince: z.iso.datetime().optional(),
+    cursor: filesOrderedCursorSchema.optional(),
+    limit: z.coerce.number().int().min(1).max(50).default(50),
+  })
+  .strict();
+export type FilesSearchRequest = z.input<typeof filesSearchRequestSchema>;
+export const filesPathSegmentSchema = z.object({
+  entryId: z.uuid(),
+  name: fileNameSchema,
+});
+export const filesSearchSchema = z.object({
+  entries: z.array(
+    filesEntrySchema.extend({
+      /** Ancestor folders from the root down to the entry's parent. */
+      path: z.array(filesPathSegmentSchema),
+    }),
+  ),
+  nextCursor: filesOrderedCursorSchema.nullable(),
+});
+export type FilesSearch = z.infer<typeof filesSearchSchema>;
+export const filesPreviewsRequestSchema = z
+  .object({
+    workplaceId: z.uuid(),
+    /** Comma-separated in the query string; at most 50 revisions. */
+    revisionIds: z.array(z.uuid()).min(1).max(50),
+  })
+  .strict();
+export const filesPreviewsSchema = z.object({
+  previews: z.array(
+    z.discriminatedUnion("state", [
+      z.object({
+        revisionId: z.uuid(),
+        state: z.literal("ready"),
+        contentType: z.literal("image/webp"),
+        /** Base64 WebP, at most 32 KiB decoded. */
+        data: z.base64().max(43_692),
+      }),
+      z.object({
+        revisionId: z.uuid(),
+        state: z.enum(["pending", "unavailable"]),
+      }),
+    ]),
+  ),
+});
+export type FilesPreviews = z.infer<typeof filesPreviewsSchema>;
 const filesCursorSchema = z
   .string()
   .min(1)
@@ -245,6 +348,50 @@ export const filesChangesRequestSchema = z
     limit: z.coerce.number().int().min(1).max(100).default(50),
   })
   .strict();
+const filesPositionSchema = z
+  .string()
+  .regex(/^[1-9][0-9]{0,18}$/)
+  .refine(
+    (v) => /^[1-9][0-9]{0,18}$/.test(v) && BigInt(v) <= 9223372036854775807n,
+  );
+export const filesChangeActionSchema = z.enum([
+  "content",
+  "folder_create",
+  "organize",
+  "folder_delete",
+  "trash",
+  "restore_trash",
+  "trash_expired",
+  "revision_expired",
+  "purge",
+  "clear_history",
+  "purge_complete",
+  "clear_history_complete",
+]);
+const filesChangeItemSchema = z.object({
+  id: z.uuid(),
+  fileId: z.uuid(),
+  revisionId: z.uuid().nullable(),
+  position: filesPositionSchema,
+  action: filesChangeActionSchema,
+  actorId: z.uuid().nullable(),
+  occurredAt: z.iso.datetime(),
+});
+export type FilesChangeItem = z.infer<typeof filesChangeItemSchema>;
+export const filesActivityRequestSchema = z
+  .object({
+    workplaceId: z.uuid(),
+    entryId: z.uuid(),
+    /** Exclusive upper bound: pages move from newest to oldest. */
+    before: filesPositionSchema.optional(),
+    limit: z.coerce.number().int().min(1).max(100).default(50),
+  })
+  .strict();
+export const filesActivitySchema = z.object({
+  items: z.array(filesChangeItemSchema).max(100),
+  nextCursor: filesPositionSchema.nullable(),
+});
+export type FilesActivity = z.infer<typeof filesActivitySchema>;
 export const filesBaselineRequestSchema = z
   .object({
     workplaceId: z.uuid(),
@@ -271,39 +418,7 @@ export const filesChangesSchema = z.discriminatedUnion("state", [
   z
     .object({
       state: z.literal("changes"),
-      items: z
-        .array(
-          z.object({
-            id: z.uuid(),
-            fileId: z.uuid(),
-            revisionId: z.uuid().nullable(),
-            position: z
-              .string()
-              .regex(/^[1-9][0-9]{0,18}$/)
-              .refine(
-                (v) =>
-                  /^[1-9][0-9]{0,18}$/.test(v) &&
-                  BigInt(v) <= 9223372036854775807n,
-              ),
-            action: z.enum([
-              "content",
-              "folder_create",
-              "organize",
-              "folder_delete",
-              "trash",
-              "restore_trash",
-              "trash_expired",
-              "revision_expired",
-              "purge",
-              "clear_history",
-              "purge_complete",
-              "clear_history_complete",
-            ]),
-            actorId: z.uuid().nullable(),
-            occurredAt: z.iso.datetime(),
-          }),
-        )
-        .max(100),
+      items: z.array(filesChangeItemSchema).max(100),
       nextCursor: filesCursorSchema.nullable(),
       checkpoint: filesCursorSchema.nullable(),
     })
@@ -413,6 +528,12 @@ export const fileTrashEntrySchema = fileMetadataSchema.extend({
   trashedAt: z.iso.datetime(),
   trashExpiresAt: z.iso.datetime(),
 });
+export const fileTrashListRequestSchema = fileListRequestSchema
+  .extend({
+    /** Case-insensitive name containment within trash. */
+    query: z.string().trim().min(1).max(255).optional(),
+  })
+  .strict();
 export const fileTrashListSchema = z.object({
   files: z.array(fileTrashEntrySchema),
   nextCursor: z.uuid().nullable(),

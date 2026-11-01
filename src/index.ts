@@ -139,6 +139,7 @@ export type {
 
 export type {
   BeginFileUploadRequest,
+  BeginFileCopyRequest,
   FileUploadRef,
   FileUploadStatus,
   FileUploadParts,
@@ -158,6 +159,13 @@ export {
 export type {
   FilesEntry,
   FilesTree,
+  FilesOrder,
+  FilesDirection,
+  FilesSearch,
+  FilesPreviews,
+  FilesActivity,
+  FilesChangeItem,
+  FileDownloadDisposition,
   FilesOrganizationRequest,
   FilesOrganizationResult,
 } from "./contracts/files.js";
@@ -172,7 +180,7 @@ export type {
 
 export { parseRestoreFileRevisionRequest } from "./files.js";
 
-export { parseFileTrashRequest } from "./files.js";
+export { parseFileTrashRequest, parseFileCopyRequest } from "./files.js";
 export type {
   FileTrashRequest,
   FileTrashOperationRef,

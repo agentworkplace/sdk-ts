@@ -115,6 +115,12 @@ import {
   type RestoreFileRevisionRequest,
   type FileRestorationRef,
   filesTreeSchema,
+  filesSearchSchema,
+  filesPreviewsSchema,
+  filesActivitySchema,
+  type FilesOrder,
+  type FilesDirection,
+  type FileDownloadDisposition,
   filesEntrySchema,
   filesOrganizationResultSchema,
   type FilesOrganizationRequest,
@@ -125,6 +131,7 @@ import {
   fileListSchema,
   fileDownloadGrantSchema,
   type BeginFileUploadRequest,
+  type BeginFileCopyRequest,
   type FileUploadRef,
   type FileRef,
 } from "./contracts/files.js";
@@ -1044,11 +1051,18 @@ export class AgentWorkplace {
 
   listTrashedFiles(
     authorization: CredentialAuthorization,
-    input: { workplaceId: string; after?: string; limit?: number },
+    input: {
+      workplaceId: string;
+      after?: string;
+      limit?: number;
+      /** Case-insensitive name containment. */
+      query?: string;
+    },
   ) {
     const query = new URLSearchParams({ workplaceId: input.workplaceId });
     if (input.after) query.set("after", input.after);
     if (input.limit !== undefined) query.set("limit", String(input.limit));
+    if (input.query !== undefined) query.set("query", input.query);
     return this.#request(
       `v1/files/trash?${query}`,
       (v) => fileTrashListSchema.parse(v),
@@ -1245,17 +1259,87 @@ export class AgentWorkplace {
     input: {
       workplaceId: string;
       parentId?: string | null;
+      /** UUID cursor for the default identity order. */
       after?: string;
+      /** An explicit order, paged with `cursor` from the previous page. */
+      order?: FilesOrder;
+      direction?: FilesDirection;
+      cursor?: string;
       limit?: number;
     },
   ) {
     const query = new URLSearchParams({ workplaceId: input.workplaceId });
     if (input.parentId) query.set("parentId", input.parentId);
     if (input.after) query.set("after", input.after);
+    if (input.order) query.set("order", input.order);
+    if (input.direction) query.set("direction", input.direction);
+    if (input.cursor) query.set("cursor", input.cursor);
     if (input.limit !== undefined) query.set("limit", String(input.limit));
     return this.#request(
       `v1/files/entries?${query}`,
       (v) => filesTreeSchema.parse(v),
+      this.#credentialAuthorization(authorization),
+    );
+  }
+  /** Live files and folders by name containment or change time, with paths. */
+  searchFiles(
+    authorization: CredentialAuthorization,
+    input: {
+      workplaceId: string;
+      query?: string;
+      kind?: "file" | "folder";
+      order?: FilesOrder;
+      direction?: FilesDirection;
+      changedSince?: string;
+      cursor?: string;
+      limit?: number;
+    },
+  ) {
+    const query = new URLSearchParams({ workplaceId: input.workplaceId });
+    if (input.query !== undefined) query.set("query", input.query);
+    if (input.kind) query.set("kind", input.kind);
+    if (input.order) query.set("order", input.order);
+    if (input.direction) query.set("direction", input.direction);
+    if (input.changedSince) query.set("changedSince", input.changedSince);
+    if (input.cursor) query.set("cursor", input.cursor);
+    if (input.limit !== undefined) query.set("limit", String(input.limit));
+    return this.#request(
+      `v1/files/search?${query}`,
+      (v) => filesSearchSchema.parse(v),
+      this.#credentialAuthorization(authorization),
+    );
+  }
+  /** Service-rendered previews for up to 50 retained revisions. */
+  listFilePreviews(
+    authorization: CredentialAuthorization,
+    input: { workplaceId: string; revisionIds: string[] },
+  ) {
+    const query = new URLSearchParams({
+      workplaceId: input.workplaceId,
+      revisionIds: input.revisionIds.join(","),
+    });
+    return this.#request(
+      `v1/files/previews?${query}`,
+      (v) => filesPreviewsSchema.parse(v),
+      this.#credentialAuthorization(authorization),
+    );
+  }
+  /** One entry's retained change metadata, newest first. */
+  listFilesActivity(
+    authorization: CredentialAuthorization,
+    input: {
+      workplaceId: string;
+      entryId: string;
+      before?: string;
+      limit?: number;
+    },
+  ) {
+    const query = new URLSearchParams({ workplaceId: input.workplaceId });
+    if (input.before) query.set("before", input.before);
+    if (input.limit !== undefined) query.set("limit", String(input.limit));
+    return this.#request(
+      `v1/files/entries/${encodeURIComponent(input.entryId)}/activity?${query}`,
+      (v) => filesActivitySchema.parse(v),
       this.#credentialAuthorization(authorization),
     );
   }
@@ -1546,6 +1630,53 @@ export class AgentWorkplace {
       { ...this.#credentialAuthorization(authorization), method: "POST" },
     );
   }
+  /** Admit a server-side copy of one retained revision; finalize it next. */
+  beginFileCopy(
+    authorization: CredentialAuthorization,
+    input: BeginFileCopyRequest,
+  ) {
+    return this.#request(
+      "v1/files/copies",
+      (value) => fileUploadStatusSchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        method: "POST",
+        body: JSON.stringify(input),
+      },
+    );
+  }
+  /**
+   * Copy a file's current (or a given) revision into a new file. The service
+   * moves the bytes; the result is the finalized upload status, which may be
+   * `pending` for large copies. Reuse `operationId` and `expiresAt` to retry.
+   */
+  async copyFile(
+    authorization: CredentialAuthorization,
+    input: Omit<BeginFileCopyRequest, "revisionId" | "expiresAt"> & {
+      revisionId?: string;
+      expiresAt?: string;
+    },
+  ) {
+    const revisionId =
+      input.revisionId ??
+      (
+        await this.getFile(authorization, {
+          workplaceId: input.workplaceId,
+          fileId: input.fileId,
+        })
+      ).revisionId;
+    const begun = await this.beginFileCopy(authorization, {
+      ...input,
+      revisionId,
+      expiresAt:
+        input.expiresAt ?? new Date(Date.now() + 55 * 60_000).toISOString(),
+    });
+    if (begun.state !== "pending") return begun;
+    return this.finalizeFileUpload(authorization, {
+      workplaceId: input.workplaceId,
+      uploadId: begun.uploadId,
+    });
+  }
   finalizeFileUpload(
     authorization: CredentialAuthorization,
     ref: FileUploadRef,
@@ -1589,9 +1720,16 @@ export class AgentWorkplace {
       this.#credentialAuthorization(authorization),
     );
   }
-  getFileDownloadGrant(authorization: CredentialAuthorization, ref: FileRef) {
+  getFileDownloadGrant(
+    authorization: CredentialAuthorization,
+    ref: FileRef & {
+      /** `attachment` asks storage to send a download disposition. */
+      disposition?: FileDownloadDisposition;
+    },
+  ) {
     const query = new URLSearchParams({ workplaceId: ref.workplaceId });
     if (ref.revisionId) query.set("revisionId", ref.revisionId);
+    if (ref.disposition) query.set("disposition", ref.disposition);
     return this.#request(
       `v1/files/${encodeURIComponent(ref.fileId)}/download?${query}`,
       (value) => fileDownloadGrantSchema.parse(value),

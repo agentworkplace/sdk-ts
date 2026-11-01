@@ -26,6 +26,10 @@ function entry(
     actorId: id(2),
     changedAt: "2026-09-17T00:00:00.000Z",
     reference: `awp:${kind}:${workplaceId}:${id(n)}`,
+    revisionId: null,
+    contentType: null,
+    byteLength: null,
+    sha256: null,
   };
 }
 function file(n: number): FileMetadata {

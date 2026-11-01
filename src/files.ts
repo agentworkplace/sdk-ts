@@ -2,6 +2,8 @@ import {
   fileDeletionRequestSchema,
   type FileDeletionRequest,
   fileTrashRequestSchema,
+  beginFileCopyRequestSchema,
+  type BeginFileCopyRequest,
   type FileTrashRequest,
 } from "./contracts/files.js";
 import { md5 } from "@noble/hashes/legacy.js";
@@ -150,6 +152,12 @@ export function parseRestoreFileRevisionRequest(value: unknown) {
 export function parseFileTrashRequest(value: unknown): FileTrashRequest {
   const parsed = fileTrashRequestSchema.safeParse(value);
   if (!parsed.success) throw new TypeError("Invalid file trash request");
+  return parsed.data;
+}
+
+export function parseFileCopyRequest(value: unknown): BeginFileCopyRequest {
+  const parsed = beginFileCopyRequestSchema.safeParse(value);
+  if (!parsed.success) throw new TypeError("Invalid file copy request");
   return parsed.data;
 }
 
