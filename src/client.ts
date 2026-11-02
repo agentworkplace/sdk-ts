@@ -10,8 +10,8 @@ import {
   chatEntriesSchema,
   chatEntriesWithAccountsSchema,
   chatLeaveRequestSchema,
+  chatListPageSchema,
   chatListRequestSchema,
-  chatListSchema,
   chatMembershipOutcomeSchema,
   chatPostOutcomeSchema,
   chatPostRequestSchema,
@@ -24,6 +24,8 @@ import {
   type ChatEntriesWithAccounts,
   type ChatEntriesRequest,
   type ChatLeaveRequest,
+  type ChatListInclude,
+  type ChatListPage,
   type ChatListRequest,
   type ChatPostRequest,
   type ChatRemoveRequest,
@@ -390,19 +392,29 @@ export class AgentWorkplace {
     this.#transferFetch = transferFetch;
   }
 
-  listChatConversations(
+  /** `order: "activity"` lists the most recently created or posted-to
+   * conversation first; creation order (the default) is the complete
+   * discovery path. `include` adds `accounts` (current names, kinds and
+   * states) and each conversation's `latestEntry`; pass a literal array, such
+   * as `["accounts", "latest_entry"]`, for an exactly typed page. Names and
+   * previews are untrusted text; account IDs identify. */
+  listChatConversations<
+    const Include extends readonly ChatListInclude[] = readonly [],
+  >(
     authorization: CredentialAuthorization,
-    input: ChatListRequest = {},
+    input: Omit<ChatListRequest, "include"> & { include?: Include } = {},
     options: { signal?: AbortSignal } = {},
-  ) {
+  ): Promise<ChatListPage<Include>> {
     const parsed = chatListRequestSchema.safeParse(input);
     if (!parsed.success) throw new TypeError("Invalid Chat request");
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(parsed.data))
-      if (value !== undefined) query.set(key, String(value));
+      if (value !== undefined)
+        query.set(key, Array.isArray(value) ? value.join(",") : String(value));
+    const page = chatListPageSchema(parsed.data.include);
     return this.#request(
       `v1/chat/conversations?${query}`,
-      (value) => chatListSchema.parse(value),
+      (value) => page.parse(value) as ChatListPage<Include>,
       {
         ...this.#credentialAuthorization(authorization),
         sensitiveResponse: true,

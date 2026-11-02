@@ -1,10 +1,15 @@
 import { expect, expectTypeOf, test, vi } from "vitest";
 import { AgentWorkplace } from "../src/client.js";
 import type {
+  ChatAccountSummary,
   ChatConversation,
   ChatConversationWithAccounts,
+  ChatConversationWithLatestEntry,
   ChatEntries,
   ChatEntriesWithAccounts,
+  ChatLatestEntry,
+  ChatList,
+  ChatListInclude,
 } from "../src/index.js";
 
 const conversationId = "11111111-1111-4111-8111-111111111111";
@@ -316,6 +321,107 @@ test("include selects the account-summary return types", () => {
         include: "accounts",
       }),
     ).resolves.toEqualTypeOf<ChatEntriesWithAccounts>();
+  };
+  expect(assertions).toBeTypeOf("function");
+});
+
+test("activity listing sends opt-in options and parses exactly the requested additions", async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>();
+  const client = new AgentWorkplace({ fetch });
+  const latestEntry = {
+    kind: "message",
+    sequence: "9007199254740993",
+    actorId: accountId,
+    createdAt,
+    preview: "é <safe>",
+    truncated: false,
+    referenceCount: 0,
+  };
+  const page = {
+    conversations: [{ ...conversation, latestEntry }],
+    nextCursor: "next",
+    accounts: [summary],
+  };
+  fetch.mockResolvedValueOnce(Response.json(page));
+  await expect(
+    client.listChatConversations(authorization, {
+      order: "activity",
+      include: ["accounts", "latest_entry"],
+      after: "cursor",
+    }),
+  ).resolves.toEqual(page);
+  const url = new URL(String(fetch.mock.calls[0]![0]));
+  expect(url.pathname).toBe("/v1/chat/conversations");
+  expect(Object.fromEntries(url.searchParams)).toEqual({
+    after: "cursor",
+    limit: "20",
+    order: "activity",
+    include: "accounts,latest_entry",
+  });
+  // The default request still names neither option.
+  fetch.mockResolvedValueOnce(
+    Response.json({ conversations: [conversation], nextCursor: null }),
+  );
+  await client.listChatConversations(authorization);
+  expect(String(fetch.mock.calls[1]![0])).toMatch(
+    /\/v1\/chat\/conversations\?limit=20$/,
+  );
+  // Unrequested or missing additions fail strict validation.
+  fetch.mockResolvedValueOnce(Response.json(page));
+  await expect(
+    client.listChatConversations(authorization),
+  ).rejects.toMatchObject({ name: "AgentWorkplaceError" });
+  fetch.mockResolvedValueOnce(
+    Response.json({ conversations: [conversation], nextCursor: null }),
+  );
+  await expect(
+    client.listChatConversations(authorization, { include: ["latest_entry"] }),
+  ).rejects.toMatchObject({ name: "AgentWorkplaceError" });
+  expect(() =>
+    client.listChatConversations(authorization, {
+      order: "recent" as "activity",
+    }),
+  ).toThrow(TypeError);
+  expect(() =>
+    client.listChatConversations(authorization, {
+      include: ["profiles" as "accounts"],
+    }),
+  ).toThrow(TypeError);
+  expect(() =>
+    client.listChatConversations(authorization, {
+      include: ["accounts", "accounts"],
+    }),
+  ).toThrow(TypeError);
+  expect(fetch).toHaveBeenCalledTimes(4);
+});
+
+test("include selects the list page types", () => {
+  const client = new AgentWorkplace({ fetch: vi.fn() });
+  // Type assertions only; calling these would send requests.
+  const assertions = (widened: ChatListInclude[]) => {
+    expectTypeOf(
+      client.listChatConversations(authorization),
+    ).resolves.toExtend<ChatList>();
+    expectTypeOf(
+      client.listChatConversations(authorization, {
+        include: ["accounts", "latest_entry"],
+      }),
+    ).resolves.toEqualTypeOf<
+      {
+        conversations: ChatConversationWithLatestEntry[];
+        nextCursor: string | null;
+      } & { accounts: ChatAccountSummary[] }
+    >();
+    expectTypeOf(
+      client.listChatConversations(authorization, { include: widened }),
+    ).resolves.toEqualTypeOf<
+      {
+        conversations: (ChatConversation & {
+          latestEntry?: ChatLatestEntry;
+        })[];
+        nextCursor: string | null;
+      } & { accounts?: ChatAccountSummary[] }
+    >();
   };
   expect(assertions).toBeTypeOf("function");
 });

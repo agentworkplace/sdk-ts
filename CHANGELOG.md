@@ -1,5 +1,22 @@
 # @agent-workplace/sdk
 
+## 0.11.0
+
+### Minor Changes
+
+- Add Chat activity listing:
+
+  - `listChatConversations` takes `order: "activity"` to list the most recently
+    created or posted-to conversation first. Creation order stays the default.
+  - `listChatConversations` takes `include`, an array of `"accounts"` and
+    `"latest_entry"`, to add current account summaries and each conversation's
+    `latestEntry` (its latest message preview, or its creation entry). A literal
+    array types the page exactly.
+
+  The new types `ChatListOrder`, `ChatListInclude`, `ChatListPage`,
+  `ChatLatestEntry` and `ChatConversationWithLatestEntry` are exported. Default
+  requests and responses are unchanged.
+
 ## 0.10.0
 
 ### Minor Changes
