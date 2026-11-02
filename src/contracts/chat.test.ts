@@ -10,6 +10,8 @@ import {
   chatEntriesSchema,
   chatEntriesWithAccountsSchema,
   chatEntrySchema,
+  chatLatestEntrySchema,
+  chatListPageSchema,
   chatListRequestSchema,
   chatMembershipOutcomeSchema,
   chatPostRequestSchema,
@@ -263,4 +265,90 @@ test("account summaries are opt-in because published clients parse responses str
     expect(chatConversationRequestSchema.safeParse(value).success).toBe(false);
     expect(chatEntriesRequestSchema.safeParse(value).success).toBe(false);
   }
+});
+
+test("activity listing options are opt-in and validated", () => {
+  // The default request names neither option, so earlier servers accept it.
+  expect(chatListRequestSchema.parse({})).toEqual({ limit: 20 });
+  expect(
+    chatListRequestSchema.parse({
+      order: "activity",
+      include: "accounts,latest_entry",
+    }),
+  ).toEqual({
+    limit: 20,
+    order: "activity",
+    include: ["accounts", "latest_entry"],
+  });
+  expect(
+    chatListRequestSchema.parse({ include: ["latest_entry"] }).include,
+  ).toEqual(["latest_entry"]);
+  for (const value of [
+    { order: "recent" },
+    { include: "" },
+    { include: "accounts,accounts" },
+    { include: "messages" },
+    { include: "accounts, latest_entry" },
+    { include: [] },
+    { include: ["accounts", "latest_entry", "accounts"] },
+  ])
+    expect(chatListRequestSchema.safeParse(value).success).toBe(false);
+});
+
+test("list pages carry exactly the requested additions", () => {
+  const conversation = {
+    conversationId: operationId,
+    topic: null,
+    createdAt: entry.createdAt,
+    participants: [{ accountId: alice, joinedSequence: "1" }],
+    latestSequence: "3",
+  };
+  const latestEntry = {
+    kind: "message",
+    sequence: "3",
+    actorId: alice,
+    createdAt: entry.createdAt,
+    preview: "Morning",
+    truncated: false,
+    referenceCount: 1,
+  };
+  const accounts = [
+    { accountId: alice, name: "Alice", kind: "agent", state: "active" },
+  ];
+  const plain = { conversations: [conversation], nextCursor: null };
+  expect(chatListPageSchema().parse(plain)).toEqual(plain);
+  expect(chatListPageSchema().safeParse({ ...plain, accounts }).success).toBe(
+    false,
+  );
+  const both = {
+    conversations: [{ ...conversation, latestEntry }],
+    nextCursor: null,
+    accounts,
+  };
+  expect(chatListPageSchema(["accounts", "latest_entry"]).parse(both)).toEqual(
+    both,
+  );
+  expect(chatListPageSchema(["accounts"]).safeParse(both).success).toBe(false);
+  expect(
+    chatListPageSchema(["latest_entry"]).safeParse({
+      conversations: [conversation],
+      nextCursor: null,
+    }).success,
+  ).toBe(false);
+  expect(
+    chatLatestEntrySchema.parse({
+      kind: "created",
+      sequence: "1",
+      actorId: alice,
+      createdAt: entry.createdAt,
+      accountIds: [alice, bob],
+    }).kind,
+  ).toBe("created");
+  for (const preview of ["a".repeat(281), "é".repeat(141), "\0"])
+    expect(
+      chatLatestEntrySchema.safeParse({ ...latestEntry, preview }).success,
+    ).toBe(false);
+  expect(
+    chatLatestEntrySchema.safeParse({ ...latestEntry, text: "full" }).success,
+  ).toBe(false);
 });

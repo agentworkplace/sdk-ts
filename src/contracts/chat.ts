@@ -175,10 +175,36 @@ export const chatDeleteOutcomeSchema = chatDeletedOutcomeSchema.extend({
 });
 export type ChatDeleteOutcome = z.infer<typeof chatDeleteOutcomeSchema>;
 
+/** `created` (the default) is the complete discovery order; `activity` puts
+ * the most recently created or posted-to conversation first. */
+export const chatListOrderSchema = z.enum(["created", "activity"]);
+export type ChatListOrder = z.infer<typeof chatListOrderSchema>;
+/** Opt-in listing additions. On the wire, one comma-separated `include`. */
+export const chatListIncludeSchema = z.enum(["accounts", "latest_entry"]);
+export type ChatListInclude = z.infer<typeof chatListIncludeSchema>;
+const listInclude = z
+  .union([
+    z
+      .string()
+      .max(64)
+      .regex(/^[a-z_]+(,[a-z_]+)*$/)
+      .transform((value) => value.split(",")),
+    z.array(chatListIncludeSchema).max(2),
+  ])
+  .pipe(
+    z
+      .array(chatListIncludeSchema)
+      .min(1)
+      .max(2)
+      .refine((values) => new Set(values).size === values.length),
+  );
 export const chatListRequestSchema = z
   .object({
     after: cursor.optional(),
     limit: z.coerce.number().int().min(1).max(50).default(20),
+    // No default: omitting it keeps requests readable by earlier servers.
+    order: chatListOrderSchema.optional(),
+    include: listInclude.optional(),
   })
   .strict();
 export type ChatListRequest = z.input<typeof chatListRequestSchema>;
@@ -189,6 +215,45 @@ export const chatListSchema = z
   })
   .strict();
 export type ChatList = z.infer<typeof chatListSchema>;
+
+/** Plain-text start of a message, at most 280 UTF-8 bytes. */
+export const chatPreviewSchema = z
+  .string()
+  .max(280)
+  .refine(
+    (value) => !/[\0\p{Surrogate}]/u.test(value) && utf8Bytes(value) <= 280,
+  );
+/** The entry that last moved the conversation in activity order: its latest
+ * message, or its creation entry before any message. */
+export const chatLatestEntrySchema = z.discriminatedUnion("kind", [
+  z
+    .object({
+      kind: z.literal("message"),
+      sequence: entrySequence,
+      actorId: id,
+      createdAt: instant,
+      preview: chatPreviewSchema,
+      truncated: z.boolean(),
+      referenceCount: z.number().int().min(0).max(10),
+    })
+    .strict(),
+  z
+    .object({
+      kind: z.literal("created"),
+      sequence: z.literal("1"),
+      actorId: id,
+      createdAt: instant,
+      accountIds,
+    })
+    .strict(),
+]);
+export type ChatLatestEntry = z.infer<typeof chatLatestEntrySchema>;
+export const chatConversationWithLatestEntrySchema = chatConversationSchema
+  .extend({ latestEntry: chatLatestEntrySchema })
+  .strict();
+export type ChatConversationWithLatestEntry = z.infer<
+  typeof chatConversationWithLatestEntrySchema
+>;
 /** Opt-in account summaries; responses without it keep their original shape. */
 const include = z.enum(["accounts"]).optional();
 export const chatConversationRequestSchema = z.object({ include }).strict();
@@ -245,6 +310,52 @@ export type ChatEntriesWithAccounts = z.infer<
   typeof chatEntriesWithAccountsSchema
 >;
 
+/** Each listed conversation names up to 100 participants, its latest actor
+ * and up to 100 created accounts. */
+export const chatListAccountsSchema = accountSummaries(50 * 201);
+/** A list page with exactly the requested additions. */
+export function chatListPageSchema(include: readonly ChatListInclude[] = []) {
+  const latest = include.includes("latest_entry");
+  const page = z.object({
+    conversations: z
+      .array(
+        latest ? chatConversationWithLatestEntrySchema : chatConversationSchema,
+      )
+      .max(50),
+    nextCursor: cursor.nullable(),
+  });
+  return (
+    include.includes("accounts")
+      ? page.extend({ accounts: chatListAccountsSchema })
+      : page
+  ).strict();
+}
+/** Whether a page has an addition: a literal tuple says exactly; a widened
+ * array leaves it possible. */
+type Requested<
+  Include extends readonly ChatListInclude[],
+  Key extends ChatListInclude,
+> = Key extends Include[number]
+  ? number extends Include["length"]
+    ? "maybe"
+    : "yes"
+  : "no";
+/** The list page for an `include` value, typed by what it requests. */
+export type ChatListPage<
+  Include extends readonly ChatListInclude[] = readonly [],
+> = {
+  conversations: (Requested<Include, "latest_entry"> extends "yes"
+    ? ChatConversationWithLatestEntry
+    : Requested<Include, "latest_entry"> extends "maybe"
+      ? ChatConversation & { latestEntry?: ChatLatestEntry }
+      : ChatConversation)[];
+  nextCursor: string | null;
+} & (Requested<Include, "accounts"> extends "yes"
+  ? { accounts: ChatAccountSummary[] }
+  : Requested<Include, "accounts"> extends "maybe"
+    ? { accounts?: ChatAccountSummary[] }
+    : unknown);
+
 /** Encoded discovery cursor: data for traversal, never authorization. */
 export const chatListPositionSchema = z
   .object({
@@ -254,5 +365,16 @@ export const chatListPositionSchema = z
     admin: z.boolean(),
     through: chatSequenceSchema,
     after: chatSequenceSchema,
+  })
+  .strict();
+/** Encoded activity cursor: continues below the last returned position. */
+export const chatActivityPositionSchema = z
+  .object({
+    version: z.literal(1),
+    order: z.literal("activity"),
+    workplaceId: id,
+    accountId: id,
+    admin: z.boolean(),
+    before: chatSequenceSchema,
   })
   .strict();
