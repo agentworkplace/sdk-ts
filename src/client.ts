@@ -258,7 +258,7 @@ import {
   type FeedbackSubmission,
 } from "./contracts/feedback.js";
 
-import { AgentWorkplaceError } from "./errors.js";
+import { AgentWorkplaceError, AgentWorkplaceInputError } from "./errors.js";
 
 export interface AgentWorkplaceOptions {
   /** API base URL; defaults to https://api.agentworkplace.dev. */
@@ -316,10 +316,10 @@ function transferUrl(value: string) {
   try {
     url = new URL(value);
   } catch {
-    throw new TypeError("Invalid Files transfer URL");
+    throw new AgentWorkplaceInputError("Invalid Files transfer URL");
   }
   if (!secureTransport(url))
-    throw new TypeError(
+    throw new AgentWorkplaceInputError(
       "Files transfers require HTTPS or loopback HTTP without URL credentials",
     );
   return url.href;
@@ -327,7 +327,9 @@ function transferUrl(value: string) {
 
 function normalizeBaseUrl(value: string): URL {
   if (typeof value !== "string" || value.trim() === "") {
-    throw new TypeError("Agent Workplace base URL must not be empty");
+    throw new AgentWorkplaceInputError(
+      "Agent Workplace base URL must not be empty",
+    );
   }
 
   let url: URL;
@@ -335,27 +337,36 @@ function normalizeBaseUrl(value: string): URL {
   try {
     url = new globalThis.URL(value);
   } catch (cause) {
-    throw new TypeError("Agent Workplace base URL must be an absolute URL", {
-      cause,
-    });
+    throw new AgentWorkplaceInputError(
+      "Agent Workplace base URL must be an absolute URL",
+      {
+        cause,
+      },
+    );
   }
 
   if (url.protocol !== "http:" && url.protocol !== "https:") {
-    throw new TypeError("Agent Workplace base URL must use HTTP or HTTPS");
+    throw new AgentWorkplaceInputError(
+      "Agent Workplace base URL must use HTTP or HTTPS",
+    );
   }
 
   if (url.username !== "" || url.password !== "") {
-    throw new TypeError(
+    throw new AgentWorkplaceInputError(
       "Agent Workplace base URL must not include credentials",
     );
   }
 
   if (url.search !== "") {
-    throw new TypeError("Agent Workplace base URL must not include a query");
+    throw new AgentWorkplaceInputError(
+      "Agent Workplace base URL must not include a query",
+    );
   }
 
   if (url.hash !== "") {
-    throw new TypeError("Agent Workplace base URL must not include a fragment");
+    throw new AgentWorkplaceInputError(
+      "Agent Workplace base URL must not include a fragment",
+    );
   }
 
   if (!url.pathname.endsWith("/")) {
@@ -386,7 +397,9 @@ export class AgentWorkplace {
       options === null ||
       Array.isArray(options)
     ) {
-      throw new TypeError("Agent Workplace options must be an object");
+      throw new AgentWorkplaceInputError(
+        "Agent Workplace options must be an object",
+      );
     }
 
     this.#baseUrl = normalizeBaseUrl(
@@ -398,13 +411,17 @@ export class AgentWorkplace {
     const fetchImplementation = options.fetch ?? globalThis.fetch;
 
     if (typeof fetchImplementation !== "function") {
-      throw new TypeError("A Fetch API implementation is required");
+      throw new AgentWorkplaceInputError(
+        "A Fetch API implementation is required",
+      );
     }
 
     this.#fetch = fetchImplementation;
     const transferFetch = options.transferFetch ?? fetchImplementation;
     if (typeof transferFetch !== "function")
-      throw new TypeError("A Files Fetch API implementation is required");
+      throw new AgentWorkplaceInputError(
+        "A Files Fetch API implementation is required",
+      );
     this.#transferFetch = transferFetch;
   }
 
@@ -422,7 +439,8 @@ export class AgentWorkplace {
     options: { signal?: AbortSignal } = {},
   ): Promise<ChatListPage<Include>> {
     const parsed = chatListRequestSchema.safeParse(input);
-    if (!parsed.success) throw new TypeError("Invalid Chat request");
+    if (!parsed.success)
+      throw new AgentWorkplaceInputError("Invalid Chat request");
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(parsed.data))
       if (value !== undefined)
@@ -445,7 +463,8 @@ export class AgentWorkplace {
     options: { signal?: AbortSignal } = {},
   ) {
     const parsed = chatCreateRequestSchema.safeParse(input);
-    if (!parsed.success) throw new TypeError("Invalid Chat request");
+    if (!parsed.success)
+      throw new AgentWorkplaceInputError("Invalid Chat request");
     return this.#request(
       `v1/chat/conversations`,
       (value) => chatCreateOutcomeSchema.parse(value),
@@ -483,11 +502,13 @@ export class AgentWorkplace {
   ): Promise<ChatConversation | ChatConversationWithAccounts> {
     const id =
       chatConversationSchema.shape.conversationId.safeParse(conversationId);
-    if (!id.success) throw new TypeError("Invalid conversation ID");
+    if (!id.success)
+      throw new AgentWorkplaceInputError("Invalid conversation ID");
     const parsed = chatConversationRequestSchema.safeParse({
       include: options.include,
     });
-    if (!parsed.success) throw new TypeError("Invalid Chat request");
+    if (!parsed.success)
+      throw new AgentWorkplaceInputError("Invalid Chat request");
     const query = parsed.data.include
       ? `?${new URLSearchParams({ include: parsed.data.include })}`
       : "";
@@ -534,9 +555,11 @@ export class AgentWorkplace {
   ): Promise<ChatEntries | ChatEntriesWithAccounts> {
     const id =
       chatConversationSchema.shape.conversationId.safeParse(conversationId);
-    if (!id.success) throw new TypeError("Invalid conversation ID");
+    if (!id.success)
+      throw new AgentWorkplaceInputError("Invalid conversation ID");
     const parsed = chatEntriesRequestSchema.safeParse(input);
-    if (!parsed.success) throw new TypeError("Invalid Chat request");
+    if (!parsed.success)
+      throw new AgentWorkplaceInputError("Invalid Chat request");
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(parsed.data))
       if (value !== undefined) query.set(key, String(value));
@@ -563,9 +586,11 @@ export class AgentWorkplace {
   ) {
     const id =
       chatConversationSchema.shape.conversationId.safeParse(conversationId);
-    if (!id.success) throw new TypeError("Invalid conversation ID");
+    if (!id.success)
+      throw new AgentWorkplaceInputError("Invalid conversation ID");
     const parsed = chatPostRequestSchema.safeParse(input);
-    if (!parsed.success) throw new TypeError("Invalid Chat request");
+    if (!parsed.success)
+      throw new AgentWorkplaceInputError("Invalid Chat request");
     return this.#request(
       `v1/chat/conversations/${encodeURIComponent(id.data)}/messages`,
       (value) => chatPostOutcomeSchema.parse(value),
@@ -587,9 +612,11 @@ export class AgentWorkplace {
   ) {
     const id =
       chatConversationSchema.shape.conversationId.safeParse(conversationId);
-    if (!id.success) throw new TypeError("Invalid conversation ID");
+    if (!id.success)
+      throw new AgentWorkplaceInputError("Invalid conversation ID");
     const parsed = chatAddRequestSchema.safeParse(input);
-    if (!parsed.success) throw new TypeError("Invalid Chat request");
+    if (!parsed.success)
+      throw new AgentWorkplaceInputError("Invalid Chat request");
     return this.#request(
       `v1/chat/conversations/${encodeURIComponent(id.data)}/participants`,
       (value) => chatMembershipOutcomeSchema.parse(value),
@@ -611,9 +638,11 @@ export class AgentWorkplace {
   ) {
     const id =
       chatConversationSchema.shape.conversationId.safeParse(conversationId);
-    if (!id.success) throw new TypeError("Invalid conversation ID");
+    if (!id.success)
+      throw new AgentWorkplaceInputError("Invalid conversation ID");
     const parsed = chatLeaveRequestSchema.safeParse(input);
-    if (!parsed.success) throw new TypeError("Invalid Chat request");
+    if (!parsed.success)
+      throw new AgentWorkplaceInputError("Invalid Chat request");
     return this.#request(
       `v1/chat/conversations/${encodeURIComponent(id.data)}/leave`,
       (value) => chatMembershipOutcomeSchema.parse(value),
@@ -635,9 +664,11 @@ export class AgentWorkplace {
   ) {
     const id =
       chatConversationSchema.shape.conversationId.safeParse(conversationId);
-    if (!id.success) throw new TypeError("Invalid conversation ID");
+    if (!id.success)
+      throw new AgentWorkplaceInputError("Invalid conversation ID");
     const parsed = chatRemoveRequestSchema.safeParse(input);
-    if (!parsed.success) throw new TypeError("Invalid Chat request");
+    if (!parsed.success)
+      throw new AgentWorkplaceInputError("Invalid Chat request");
     return this.#request(
       `v1/chat/conversations/${encodeURIComponent(id.data)}/remove`,
       (value) => chatMembershipOutcomeSchema.parse(value),
@@ -658,7 +689,8 @@ export class AgentWorkplace {
   ) {
     const id =
       chatConversationSchema.shape.conversationId.safeParse(conversationId);
-    if (!id.success) throw new TypeError("Invalid conversation ID");
+    if (!id.success)
+      throw new AgentWorkplaceInputError("Invalid conversation ID");
     return this.#request(
       `v1/chat/conversations/${encodeURIComponent(id.data)}`,
       (value) => chatDeleteOutcomeSchema.parse(value),
@@ -677,7 +709,7 @@ export class AgentWorkplace {
   ) {
     const parsed = notificationListRequestSchema.safeParse(input);
     if (!parsed.success)
-      throw new TypeError("Invalid notification list request");
+      throw new AgentWorkplaceInputError("Invalid notification list request");
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(parsed.data))
       if (value !== undefined) query.set(key, String(value));
@@ -698,7 +730,7 @@ export class AgentWorkplace {
   ) {
     const parsed = notificationStatusRequestSchema.safeParse(input);
     if (!parsed.success)
-      throw new TypeError("Invalid notification status request");
+      throw new AgentWorkplaceInputError("Invalid notification status request");
     const query = new URLSearchParams();
     if (parsed.data.accountId !== undefined)
       query.set("accountId", parsed.data.accountId);
@@ -718,7 +750,9 @@ export class AgentWorkplace {
   ) {
     const parsed = notificationReadRequestSchema.safeParse(input);
     if (!parsed.success)
-      throw new TypeError("Invalid notification acknowledgement");
+      throw new AgentWorkplaceInputError(
+        "Invalid notification acknowledgement",
+      );
     return this.#request(
       "v1/notifications/read",
       (value) => notificationAcknowledgementSchema.parse(value),
@@ -740,7 +774,9 @@ export class AgentWorkplace {
       !parsed.success ||
       !notificationSchema.shape.id.safeParse(notificationId).success
     )
-      throw new TypeError("Invalid notification acknowledgement");
+      throw new AgentWorkplaceInputError(
+        "Invalid notification acknowledgement",
+      );
     return this.#request(
       `v1/notifications/${encodeURIComponent(notificationId)}/read`,
       (value) => notificationAcknowledgementSchema.parse(value),
@@ -761,7 +797,9 @@ export class AgentWorkplace {
   ) {
     const parsed = notificationEndpointRegisterRequestSchema.safeParse(input);
     if (!parsed.success)
-      throw new TypeError("Invalid notification endpoint registration");
+      throw new AgentWorkplaceInputError(
+        "Invalid notification endpoint registration",
+      );
     return this.#request(
       "v1/notifications/endpoints",
       (value) => notificationEndpointRegistrationSchema.parse(value),
@@ -782,7 +820,9 @@ export class AgentWorkplace {
   ) {
     const parsed = notificationStatusRequestSchema.safeParse(input);
     if (!parsed.success)
-      throw new TypeError("Invalid notification endpoint target");
+      throw new AgentWorkplaceInputError(
+        "Invalid notification endpoint target",
+      );
     const query = new URLSearchParams();
     if (parsed.data.accountId !== undefined)
       query.set("accountId", parsed.data.accountId);
@@ -808,7 +848,9 @@ export class AgentWorkplace {
       !parsed.success ||
       !notificationEndpointSchema.shape.id.safeParse(endpointId).success
     )
-      throw new TypeError("Invalid notification endpoint target");
+      throw new AgentWorkplaceInputError(
+        "Invalid notification endpoint target",
+      );
     const query = new URLSearchParams();
     if (parsed.data.accountId !== undefined)
       query.set("accountId", parsed.data.accountId);
@@ -836,7 +878,9 @@ export class AgentWorkplace {
       !parsed.success ||
       !notificationEndpointSchema.shape.id.safeParse(endpointId).success
     )
-      throw new TypeError("Invalid notification endpoint target");
+      throw new AgentWorkplaceInputError(
+        "Invalid notification endpoint target",
+      );
     const query = new URLSearchParams();
     if (parsed.data.accountId !== undefined)
       query.set("accountId", parsed.data.accountId);
@@ -863,7 +907,9 @@ export class AgentWorkplace {
       !parsed.success ||
       !notificationEndpointSchema.shape.id.safeParse(endpointId).success
     )
-      throw new TypeError("Invalid notification endpoint target");
+      throw new AgentWorkplaceInputError(
+        "Invalid notification endpoint target",
+      );
     const query = new URLSearchParams();
     if (parsed.data.accountId !== undefined)
       query.set("accountId", parsed.data.accountId);
@@ -889,7 +935,8 @@ export class AgentWorkplace {
     input: FeedbackSubmission,
   ) {
     const parsed = feedbackSubmissionSchema.safeParse(input);
-    if (!parsed.success) throw new TypeError("Invalid feedback submission");
+    if (!parsed.success)
+      throw new AgentWorkplaceInputError("Invalid feedback submission");
     return this.#request(
       "v1/feedback",
       (value) => feedbackReceiptSchema.parse(value),
@@ -1403,7 +1450,7 @@ export class AgentWorkplace {
     data: Uint8Array,
   ) {
     if (data.byteLength > 64 * 1024 * 1024)
-      throw new TypeError("Files are limited to 64 MiB");
+      throw new AgentWorkplaceInputError("Files are limited to 64 MiB");
     const bytes = new Uint8Array(data);
     return this.uploadFileFromSource(authorization, input, {
       byteLength: bytes.length,
@@ -1426,7 +1473,9 @@ export class AgentWorkplace {
       JSON.stringify(verified.multipartParts) !==
         JSON.stringify(input.multipartParts)
     )
-      throw new TypeError("Upload bytes differ from the immutable request");
+      throw new AgentWorkplaceInputError(
+        "Upload bytes differ from the immutable request",
+      );
     const begun = await this.beginFileUpload(authorization, input);
     if (begun.state !== "pending") return begun;
     const ref = { workplaceId: input.workplaceId, uploadId: begun.uploadId };
@@ -1465,11 +1514,15 @@ export class AgentWorkplace {
         read.byteLength !== part.byteLength ||
         source.byteLength !== input.byteLength
       )
-        throw new TypeError("Upload source length changed before dispatch");
+        throw new AgentWorkplaceInputError(
+          "Upload source length changed before dispatch",
+        );
       // Own this bounded body; subsequent caller mutation cannot alter a PUT.
       const bytes = new Uint8Array(read);
       if (btoa(String.fromCharCode(...md5(bytes))) !== part.contentMd5)
-        throw new TypeError("Upload bytes differ from the immutable request");
+        throw new AgentWorkplaceInputError(
+          "Upload bytes differ from the immutable request",
+        );
       dispatchedHash.update(bytes);
       if (present.has(part.partNumber)) {
         offset += part.byteLength;
@@ -1511,7 +1564,9 @@ export class AgentWorkplace {
       source.byteLength !== input.byteLength ||
       bytesToHex(dispatchedHash.digest()) !== input.sha256
     )
-      throw new TypeError("Upload bytes differ from the immutable request");
+      throw new AgentWorkplaceInputError(
+        "Upload bytes differ from the immutable request",
+      );
     return this.finalizeFileUpload(authorization, ref);
   }
   async uploadText(
@@ -1521,7 +1576,7 @@ export class AgentWorkplace {
   ) {
     const bytes = new TextEncoder().encode(text);
     if (bytes.length > 1024 * 1024)
-      throw new TypeError("Text uploads are limited to 1 MiB");
+      throw new AgentWorkplaceInputError("Text uploads are limited to 1 MiB");
     return this.uploadFile(
       authorization,
       prepareFileUpload(input, bytes),
@@ -1551,7 +1606,7 @@ export class AgentWorkplace {
     const grant = await this.getFileDownloadGrant(authorization, ref);
     checkDownloadLimit(grant.file.byteLength, maxBytes);
     if (grant.file.byteLength > 64 * 1024 * 1024)
-      throw new TypeError(
+      throw new AgentWorkplaceInputError(
         "Whole-buffer downloads are limited to 64 MiB; use downloadFileTo",
       );
     let response: Response;
@@ -2835,7 +2890,7 @@ export class AgentWorkplace {
     } = {},
   ): Promise<T> {
     if (!secureTransport(this.#baseUrl))
-      throw new TypeError(
+      throw new AgentWorkplaceInputError(
         "Signup and authenticated operations require HTTPS or loopback HTTP",
       );
     const requestId = globalThis.crypto.randomUUID();

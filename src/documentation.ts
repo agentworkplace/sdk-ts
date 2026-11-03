@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { AgentWorkplaceInputError } from "./errors.js";
 
 const canonicalPath = z
   .string()
@@ -131,7 +132,9 @@ export class DocumentationClient {
       options === null ||
       Array.isArray(options)
     )
-      throw new TypeError("Documentation options must be an object");
+      throw new AgentWorkplaceInputError(
+        "Documentation options must be an object",
+      );
     const url = new URL(
       options.baseUrl === undefined
         ? "https://docs.agentworkplace.dev"
@@ -145,7 +148,9 @@ export class DocumentationClient {
       url.search ||
       url.hash
     )
-      throw new TypeError("Documentation base URL must be an HTTP origin");
+      throw new AgentWorkplaceInputError(
+        "Documentation base URL must be an HTTP origin",
+      );
     this.origin = url.origin;
     this.transport = options.fetch ?? fetch;
   }

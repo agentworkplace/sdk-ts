@@ -10,7 +10,7 @@ import {
   type MailPreparationList,
   type MailOmissionList,
 } from "./contracts/mail.js";
-import { AgentWorkplaceError } from "./errors.js";
+import { AgentWorkplaceError, AgentWorkplaceInputError } from "./errors.js";
 
 export type MailExportScope =
   | { kind: "mailbox" }
@@ -90,18 +90,19 @@ export async function* walkMail(
     mailboxId: input.mailboxId,
   });
   if (!parsed.success || !visits || typeof visits.addIfNew !== "function")
-    throw new TypeError("Invalid Mail export request");
+    throw new AgentWorkplaceInputError("Invalid Mail export request");
   const mailboxId = parsed.data.mailboxId.toLowerCase();
   const kind = input.scope?.kind;
   if (kind !== "mailbox" && kind !== "message" && kind !== "thread")
-    throw new TypeError("Invalid Mail export scope");
+    throw new AgentWorkplaceInputError("Invalid Mail export scope");
   let scope: MailExportScope = { kind: "mailbox" };
   if (input.scope.kind !== "mailbox") {
     const ref = mailMessageReadRequestSchema.safeParse({
       mailboxId,
       messageId: input.scope.messageId,
     });
-    if (!ref.success) throw new TypeError("Invalid Mail export message");
+    if (!ref.success)
+      throw new AgentWorkplaceInputError("Invalid Mail export message");
     scope = {
       kind: input.scope.kind,
       messageId: ref.data.messageId.toLowerCase(),

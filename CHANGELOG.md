@@ -1,5 +1,14 @@
 # @agent-workplace/sdk
 
+## 0.13.0
+
+### Minor Changes
+
+- Add `AgentWorkplaceInputError` for input the SDK rejects before sending a
+  request, such as a malformed ID, file reference or request body. It extends
+  `TypeError`, so existing `instanceof TypeError` checks keep working, and carries
+  `code: "invalid_input"` so callers can handle it without matching messages.
+
 ## 0.12.0
 
 ### Minor Changes

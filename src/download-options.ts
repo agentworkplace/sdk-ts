@@ -1,4 +1,4 @@
-import { AgentWorkplaceError } from "./errors.js";
+import { AgentWorkplaceError, AgentWorkplaceInputError } from "./errors.js";
 
 /** Optional caller ceiling for whole-buffer Files and Mail downloads. */
 export interface DownloadOptions {
@@ -9,7 +9,9 @@ export interface DownloadOptions {
 export function validateDownloadLimit(options: DownloadOptions) {
   const limit = options.maxBytes;
   if (limit !== undefined && (!Number.isSafeInteger(limit) || limit < 0))
-    throw new TypeError("maxBytes must be a nonnegative safe integer");
+    throw new AgentWorkplaceInputError(
+      "maxBytes must be a nonnegative safe integer",
+    );
   return limit;
 }
 

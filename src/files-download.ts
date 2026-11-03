@@ -5,7 +5,7 @@ import type {
   FileMetadata,
   FileRef,
 } from "./contracts/files.js";
-import { AgentWorkplaceError } from "./errors.js";
+import { AgentWorkplaceError, AgentWorkplaceInputError } from "./errors.js";
 
 /** The caller owns sink lifetime. Writes must finish before resolving and must
  * not mutate bytes. A checkpoint must sync bytes before persisting its offset;
@@ -53,7 +53,7 @@ export async function downloadToSink(
       resume.byteLength < resume.offset ||
       (resume.offset > 0 && !sink.read))
   )
-    throw new TypeError(
+    throw new AgentWorkplaceInputError(
       "Resume requires the saved revision, length, hash and readable prefix",
     );
   if (options.signal?.aborted) throw interrupted();
