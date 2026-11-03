@@ -592,3 +592,41 @@ test("standalone attachment selection parsing copies normalized ordered refs and
       "Invalid Mail attachment selection",
     );
 });
+
+test("attachment download grants pass a saving disposition through", async () => {
+  const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+    Response.json({
+      messageId: mailbox.accountId,
+      attachment: {
+        attachmentId: mailbox.mailboxId,
+        ordinal: 0,
+        filename: "report.pdf",
+        contentType: "application/pdf",
+        disposition: "attachment",
+        contentId: null,
+        state: "retained",
+        bytes: 3,
+        sha256:
+          "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad",
+      },
+      url: "https://blob.example.test/temporary",
+      expiresAt: "2030-01-01T00:00:00Z",
+    }),
+  );
+  const client = new AgentWorkplace({
+    baseUrl: "https://api.example.test",
+    fetch,
+  });
+  await client.getMailAttachmentDownloadGrant(
+    { humanSession: true },
+    {
+      mailboxId: mailbox.mailboxId,
+      messageId: mailbox.accountId,
+      attachmentId: mailbox.mailboxId,
+      disposition: "attachment",
+    },
+  );
+  const url = new URL(String(fetch.mock.calls[0]![0]));
+  expect(url.searchParams.get("disposition")).toBe("attachment");
+  expect(url.searchParams.get("mailboxId")).toBe(mailbox.mailboxId);
+});

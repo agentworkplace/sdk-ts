@@ -1,5 +1,24 @@
 # @agent-workplace/sdk
 
+## 0.12.0
+
+### Minor Changes
+
+- Add participants' Mailbox addresses: `listParticipants` takes
+  `{ include: "mailboxAddress" }` to add each active participant's
+  `mailboxAddress` (or `null` without a Mailbox). The overload returns the new
+  `ParticipantListWithMailboxes` type. Default requests and responses are
+  unchanged.
+- Add a saving disposition to Mail attachment grants:
+  `getMailAttachmentDownloadGrant` takes `disposition: "attachment"`, so storage
+  answers with a `Content-Disposition` naming the part and a browser saves it
+  instead of opening it. Grants without it are unchanged.
+- Add Mail message previews: `listMailMessages` takes `include: "preview"` to add
+  each message's plain-text `preview` of up to 200 characters (`null` until it
+  has been computed for older messages). The overload returns the new
+  `MailMessageListWithPreviews` type, with `MailMessageSummaryWithPreview`
+  entries. Default requests and responses are unchanged.
+
 ## 0.11.0
 
 ### Minor Changes

@@ -57,6 +57,26 @@ describe("credential HTTP transport", () => {
     await expect(
       client.listParticipants({ apiKey: "test-key" }),
     ).rejects.toThrow("invalid response");
+    // Addresses arrive only when asked for, so older shapes stay strict.
+    const withAddresses = participants.map((participant) => ({
+      ...participant,
+      mailboxAddress: "agent@mail.agentworkplace.dev",
+    }));
+    fetch.mockImplementation(async () =>
+      Response.json({ participants: withAddresses }),
+    );
+    expect(
+      await client.listParticipants(
+        { apiKey: "test-key" },
+        { include: "mailboxAddress" },
+      ),
+    ).toEqual({ participants: withAddresses });
+    expect(fetch.mock.calls.at(-1)![0].toString()).toBe(
+      "https://api.example.test/v1/accounts?include=mailboxAddress",
+    );
+    await expect(
+      client.listParticipants({ apiKey: "test-key" }),
+    ).rejects.toThrow("invalid response");
   });
   it("uses explicit agent authentication for management and saved-candidate authentication for completion", async () => {
     const fetch = vi

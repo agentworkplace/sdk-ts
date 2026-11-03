@@ -176,6 +176,9 @@ import {
   type MailOperationListRequest,
   mailContentAcknowledgementSchema,
   mailMessageListSchema,
+  mailMessageListWithPreviewsSchema,
+  type MailMessageList,
+  type MailMessageListWithPreviews,
   mailSenderBlockStateSchema,
   mailSenderBlockListSchema,
   type MailSenderBlockRequest,
@@ -196,6 +199,9 @@ import {
 import {
   agentKeyListSchema,
   participantListSchema,
+  participantListWithMailboxesSchema,
+  type ParticipantList,
+  type ParticipantListWithMailboxes,
   participantRemovedSchema,
   agentCredentialSchema,
   agentKeyRevokedSchema,
@@ -358,6 +364,16 @@ function normalizeBaseUrl(value: string): URL {
 
   return url;
 }
+
+/** Mail listing filters shared by both listing shapes. */
+type MailMessageListInput = {
+  mailboxId?: string;
+  after?: string;
+  limit?: number;
+  view?: "active" | "archive" | "all" | "trash";
+  direction?: "incoming" | "outgoing";
+  subject?: string;
+};
 
 export class AgentWorkplace {
   readonly #baseUrl: URL;
@@ -1937,17 +1953,23 @@ export class AgentWorkplace {
       this.#credentialAuthorization(authorization),
     );
   }
+  /** `include: "preview"` adds each message's plain-text preview. */
   listMailMessages(
     authorization: CredentialAuthorization,
-    input: {
-      mailboxId?: string;
-      after?: string;
-      limit?: number;
-      view?: "active" | "archive" | "all" | "trash";
-      direction?: "incoming" | "outgoing";
-      subject?: string;
-    } = {},
-  ) {
+    input: MailMessageListInput & { include: "preview" },
+  ): Promise<MailMessageListWithPreviews>;
+  listMailMessages(
+    authorization: CredentialAuthorization,
+    input?: MailMessageListInput & { include?: undefined },
+  ): Promise<MailMessageList>;
+  listMailMessages(
+    authorization: CredentialAuthorization,
+    input?: MailMessageListInput & { include?: "preview" },
+  ): Promise<MailMessageList | MailMessageListWithPreviews>;
+  listMailMessages(
+    authorization: CredentialAuthorization,
+    input: MailMessageListInput & { include?: "preview" } = {},
+  ): Promise<MailMessageList | MailMessageListWithPreviews> {
     const query = new URLSearchParams();
     if (input.mailboxId !== undefined) query.set("mailboxId", input.mailboxId);
     if (input.after !== undefined) query.set("after", input.after);
@@ -1955,9 +1977,13 @@ export class AgentWorkplace {
     if (input.view !== undefined) query.set("view", input.view);
     if (input.direction !== undefined) query.set("direction", input.direction);
     if (input.subject !== undefined) query.set("subject", input.subject);
+    if (input.include !== undefined) query.set("include", input.include);
     return this.#request(
       `v1/mail/messages${query.size ? `?${query}` : ""}`,
-      (value) => mailMessageListSchema.parse(value),
+      (value) =>
+        input.include === "preview"
+          ? mailMessageListWithPreviewsSchema.parse(value)
+          : mailMessageListSchema.parse(value),
       this.#credentialAuthorization(authorization),
     );
   }
@@ -1980,6 +2006,8 @@ export class AgentWorkplace {
   ) {
     const query = new URLSearchParams();
     if (ref.mailboxId !== undefined) query.set("mailboxId", ref.mailboxId);
+    if (ref.disposition !== undefined)
+      query.set("disposition", ref.disposition);
     return this.#request(
       `v1/mail/messages/${encodeURIComponent(ref.messageId)}/attachments/${encodeURIComponent(ref.attachmentId)}/download${query.size ? `?${query}` : ""}`,
       (value) => {
@@ -2607,12 +2635,31 @@ export class AgentWorkplace {
     );
   }
 
-  listParticipants(authorization: CredentialAuthorization) {
-    return this.#request(
-      "v1/accounts",
-      (value) => participantListSchema.parse(value),
-      this.#credentialAuthorization(authorization),
-    );
+  /** `include: "mailboxAddress"` adds each active participant's designated
+   * Mailbox address (null otherwise). It grants no Mailbox access. */
+  listParticipants(
+    authorization: CredentialAuthorization,
+    options: { include: "mailboxAddress" },
+  ): Promise<ParticipantListWithMailboxes>;
+  listParticipants(
+    authorization: CredentialAuthorization,
+    options?: { include?: undefined },
+  ): Promise<ParticipantList>;
+  listParticipants(
+    authorization: CredentialAuthorization,
+    options: { include?: "mailboxAddress" } = {},
+  ): Promise<ParticipantList | ParticipantListWithMailboxes> {
+    return options.include === "mailboxAddress"
+      ? this.#request(
+          "v1/accounts?include=mailboxAddress",
+          (value) => participantListWithMailboxesSchema.parse(value),
+          this.#credentialAuthorization(authorization),
+        )
+      : this.#request(
+          "v1/accounts",
+          (value) => participantListSchema.parse(value),
+          this.#credentialAuthorization(authorization),
+        );
   }
   removeParticipant(authorization: CredentialAuthorization, accountId: string) {
     return this.#request(

@@ -323,6 +323,8 @@ export const mailMessageListRequestSchema = mailTargetRequestSchema.extend({
     .refine((value) => !/[\p{Cc}\p{Surrogate}]/u.test(value))
     .transform((value) => value.toLowerCase())
     .optional(),
+  /** Opt-in previews; responses without it keep their original shape. */
+  include: z.enum(["preview"]).optional(),
 });
 export type MailMessageListRequest = z.input<
   typeof mailMessageListRequestSchema
@@ -333,6 +335,23 @@ export const mailMessageListSchema = z
     nextCursor: z.string().max(512).nullable(),
   })
   .strict();
+/** A summary with its plain-text preview: at most 200 characters, empty when
+ * the message has no text, null until the service has computed it. */
+export const mailMessageSummaryWithPreviewSchema = mailMessageSummarySchema
+  .extend({ preview: z.string().max(200).nullable() })
+  .strict();
+export type MailMessageSummaryWithPreview = z.infer<
+  typeof mailMessageSummaryWithPreviewSchema
+>;
+export const mailMessageListWithPreviewsSchema = z
+  .object({
+    messages: z.array(mailMessageSummaryWithPreviewSchema).max(100),
+    nextCursor: z.string().max(512).nullable(),
+  })
+  .strict();
+export type MailMessageListWithPreviews = z.infer<
+  typeof mailMessageListWithPreviewsSchema
+>;
 export type MailMessageList = z.infer<typeof mailMessageListSchema>;
 export const mailOmissionListRequestSchema = mailTargetRequestSchema.extend({
   after: z
@@ -602,6 +621,9 @@ export const mailAttachmentDownloadRequestSchema =
   mailTargetRequestSchema.extend({
     messageId: z.uuid(),
     attachmentId: z.uuid(),
+    /** `attachment` signs a Content-Disposition so a browser saves the part
+     * under its name instead of rendering it. */
+    disposition: z.enum(["attachment"]).optional(),
   });
 export type MailAttachmentDownloadRequest = z.infer<
   typeof mailAttachmentDownloadRequestSchema

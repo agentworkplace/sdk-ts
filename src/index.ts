@@ -64,6 +64,8 @@ export type {
 
 export type {
   ParticipantList,
+  ParticipantListWithMailboxes,
+  ParticipantListRequest,
   AgentKeyList,
   AgentCredential,
   KeyRotationResponse,
@@ -88,6 +90,8 @@ export type {
   MailThread,
   MailThreadReadRequest,
   MailMessageSummary,
+  MailMessageSummaryWithPreview,
+  MailMessageListWithPreviews,
   MailMessageList,
   MailSenderBlockRequest,
   MailSenderBlockState,
