@@ -45,23 +45,41 @@ export type AgentKeyList = z.infer<typeof agentKeyListSchema>;
 export type AgentCredential = z.infer<typeof agentCredentialSchema>;
 export type KeyRotationResponse = z.infer<typeof keyRotationResponseSchema>;
 
+const participantSchema = z
+  .object({
+    id: z.uuid(),
+    name: z.string().nullable(),
+    kind: z.enum(["agent", "human"]),
+    role: z.enum(["owner", "admin", "member"]),
+    state: z.enum(["active", "removed"]),
+    departureKind: z.enum(["departed", "removed"]).nullable(),
+    departedAt: z.iso.datetime().nullable(),
+  })
+  .strict();
 export const participantListSchema = z
+  .object({ participants: z.array(participantSchema) })
+  .strict();
+/** Opt-in workplace email addresses; responses without it keep their shape. */
+export const participantListRequestSchema = z
+  .object({ include: z.enum(["mailboxAddress"]).optional() })
+  .strict();
+export type ParticipantListRequest = z.input<
+  typeof participantListRequestSchema
+>;
+/** Adds each active participant's designated Mailbox address (else null).
+ * It names the address only and grants no Mailbox access. */
+export const participantListWithMailboxesSchema = z
   .object({
     participants: z.array(
-      z
-        .object({
-          id: z.uuid(),
-          name: z.string().nullable(),
-          kind: z.enum(["agent", "human"]),
-          role: z.enum(["owner", "admin", "member"]),
-          state: z.enum(["active", "removed"]),
-          departureKind: z.enum(["departed", "removed"]).nullable(),
-          departedAt: z.iso.datetime().nullable(),
-        })
+      participantSchema
+        .extend({ mailboxAddress: z.string().max(320).nullable() })
         .strict(),
     ),
   })
   .strict();
+export type ParticipantListWithMailboxes = z.infer<
+  typeof participantListWithMailboxesSchema
+>;
 export const participantRemovedSchema = z
   .object({ removed: z.literal(true), accountId: z.uuid() })
   .strict();

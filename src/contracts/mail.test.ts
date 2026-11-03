@@ -4,6 +4,7 @@ import {
   mailChangesRequestSchema,
   mailAttachmentSchema,
   mailAttachmentListRequestSchema,
+  mailAttachmentDownloadRequestSchema,
   mailContentChangeRequestSchema,
   mailContentAcknowledgementSchema,
   mailBodyRepresentationSchema,
@@ -432,5 +433,24 @@ test("outgoing attachment selections accept only bounded immutable resource refe
   ])
     expect(
       sendMailRequestSchema.safeParse({ ...request, attachments }).success,
+    ).toBe(false);
+});
+
+test("attachment downloads may ask only for a saving disposition", () => {
+  const ref = {
+    messageId: "11111111-1111-4111-8111-111111111111",
+    attachmentId: "22222222-2222-4222-8222-222222222222",
+  };
+  expect(mailAttachmentDownloadRequestSchema.safeParse(ref).success).toBe(true);
+  expect(
+    mailAttachmentDownloadRequestSchema.parse({
+      ...ref,
+      disposition: "attachment",
+    }).disposition,
+  ).toBe("attachment");
+  for (const disposition of ["inline", "", "ATTACHMENT"])
+    expect(
+      mailAttachmentDownloadRequestSchema.safeParse({ ...ref, disposition })
+        .success,
     ).toBe(false);
 });
