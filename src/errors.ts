@@ -29,3 +29,17 @@ export class AgentWorkplaceError extends Error {
     this.requestId = options.requestId;
   }
 }
+
+/**
+ * Invalid caller input detected before any request, such as a malformed ID,
+ * file reference or limit. It extends `TypeError`, so existing checks keep
+ * working; the message is a fixed, safe description of the rejected input.
+ */
+export class AgentWorkplaceInputError extends TypeError {
+  readonly code = "invalid_input" as const;
+
+  constructor(message: string, options?: { cause?: unknown }) {
+    super(message, options);
+    this.name = "AgentWorkplaceInputError";
+  }
+}

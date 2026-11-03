@@ -6,7 +6,7 @@ import {
   type FilesCheckpoint,
   type FilesChanges,
 } from "./contracts/files.js";
-import { AgentWorkplaceError } from "./errors.js";
+import { AgentWorkplaceError, AgentWorkplaceInputError } from "./errors.js";
 
 /** Paths are untrusted names, not filesystem paths. Consumers must enforce
  * their destination's name, collision and no-overwrite rules independently. */
@@ -65,14 +65,15 @@ export async function* walkTree(
   visits?: FilesTreeVisitStore,
 ): AsyncGenerator<FilesTreeItem> {
   const parsed = filesTreeRequestSchema.safeParse(input);
-  if (!parsed.success) throw new TypeError("Invalid Files tree root");
+  if (!parsed.success)
+    throw new AgentWorkplaceInputError("Invalid Files tree root");
   const { workplaceId, parentId } = parsed.data;
   const { checkpoint } = await reads.checkpoint();
   const root = parentId === null ? null : await reads.entry(parentId);
   if (root && (root.workplaceId !== workplaceId || root.entryId !== parentId))
     throw malformed();
   if (root && root.kind !== "folder")
-    throw new TypeError("Files tree root must be a folder");
+    throw new AgentWorkplaceInputError("Files tree root must be a folder");
   const seen = new Set<string>();
   const addIfNew = visits
     ? (entryId: string) => visits.addIfNew(entryId)
@@ -212,7 +213,7 @@ export async function* walkRetained(
   },
 ): AsyncGenerator<RetainedFilesItem> {
   if (!filesTreeRequestSchema.safeParse({ workplaceId }).success)
-    throw new TypeError("Invalid Files workplace");
+    throw new AgentWorkplaceInputError("Invalid Files workplace");
   const { checkpoint } = await reads.checkpoint();
   yield { kind: "start", checkpoint };
   let after: string | undefined,

@@ -9,6 +9,7 @@ import {
   parseFileUploadRequest,
   fileBytesHash,
 } from "./files.js";
+import { AgentWorkplaceInputError } from "./errors.js";
 
 type CopyClient = Pick<
   AgentWorkplace,
@@ -46,7 +47,7 @@ export function parseMailAttachmentFileCopyIntent(
     if (request.byteLength > 10_000_000) throw new Error();
     return { version: 1, source, request };
   } catch {
-    throw new TypeError("Invalid Mail attachment copy intent");
+    throw new AgentWorkplaceInputError("Invalid Mail attachment copy intent");
   }
 }
 
@@ -57,7 +58,9 @@ export async function copyAttachmentToFile(
   saveIntent: (intent: MailAttachmentFileCopyIntent) => Promise<void>,
 ) {
   if (typeof saveIntent !== "function")
-    throw new TypeError("A copy intent persistence callback is required");
+    throw new AgentWorkplaceInputError(
+      "A copy intent persistence callback is required",
+    );
   const { source: unparsed, ...destination } = input;
   const source = mailAttachmentDownloadRequestSchema.parse(unparsed);
   // Validate destination/operation identity before requesting source bytes.
@@ -124,7 +127,9 @@ async function transfer(
     bytes.byteLength !== intent.request.byteLength ||
     fileBytesHash(bytes) !== intent.request.sha256
   )
-    throw new TypeError("Attachment bytes differ from the saved copy intent");
+    throw new AgentWorkplaceInputError(
+      "Attachment bytes differ from the saved copy intent",
+    );
   return client.uploadFileFromSource(auth, intent.request, {
     byteLength: bytes.byteLength,
     read: async (offset, length) => bytes.subarray(offset, offset + length),

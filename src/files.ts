@@ -16,6 +16,7 @@ import {
   fileRefSchema,
   type BeginFileUploadRequest,
 } from "./contracts/files.js";
+import { AgentWorkplaceInputError } from "./errors.js";
 const partBytes = 8 * 1024 * 1024;
 /** Reopen the same immutable bytes on every read/retry. Reads return at most
  * length bytes; EOF returns an empty array. A stable length alone does not prove
@@ -42,7 +43,7 @@ export function prepareFileUpload(
   bytes: Uint8Array,
 ): BeginFileUploadRequest {
   if (bytes.byteLength > 64 * 1024 * 1024)
-    throw new TypeError("Files are limited to 64 MiB");
+    throw new AgentWorkplaceInputError("Files are limited to 64 MiB");
   const multipartParts = [];
   for (
     let offset = 0;
@@ -77,7 +78,9 @@ export async function prepareFileUploadFromSource(
     byteLength < 0 ||
     byteLength > 2_000_000_000
   )
-    throw new TypeError("Files are limited to 2,000,000,000 bytes");
+    throw new AgentWorkplaceInputError(
+      "Files are limited to 2,000,000,000 bytes",
+    );
   const contentHash = sha256.create(),
     contentDigest = md5.create();
   const multipartParts: BeginFileUploadRequest["multipartParts"] = [];
@@ -89,7 +92,9 @@ export async function prepareFileUploadFromSource(
       bytes.byteLength !== length ||
       source.byteLength !== byteLength
     )
-      throw new TypeError("Upload source length changed during preparation");
+      throw new AgentWorkplaceInputError(
+        "Upload source length changed during preparation",
+      );
     contentHash.update(bytes);
     contentDigest.update(bytes);
     multipartParts.push({
@@ -104,7 +109,9 @@ export async function prepareFileUploadFromSource(
     extra.byteLength !== 0 ||
     source.byteLength !== byteLength
   )
-    throw new TypeError("Upload source length changed during preparation");
+    throw new AgentWorkplaceInputError(
+      "Upload source length changed during preparation",
+    );
   return beginFileUploadRequestSchema.parse({
     ...input,
     byteLength,
@@ -117,13 +124,14 @@ export function parseFileReference(reference: string) {
   const match = /^awp:file:([^:]+):([^:]+)(?::revision:([^:]+))?$/.exec(
     reference,
   );
-  if (!match) throw new TypeError("Invalid file reference");
+  if (!match) throw new AgentWorkplaceInputError("Invalid file reference");
   const parsed = fileRefSchema.safeParse({
     workplaceId: match[1],
     fileId: match[2],
     ...(match[3] ? { revisionId: match[3] } : {}),
   });
-  if (!parsed.success) throw new TypeError("Invalid file reference");
+  if (!parsed.success)
+    throw new AgentWorkplaceInputError("Invalid file reference");
   return parsed.data;
 }
 export function fileBytesHash(bytes: Uint8Array) {
@@ -132,37 +140,42 @@ export function fileBytesHash(bytes: Uint8Array) {
 
 export function parseFileUploadRequest(value: unknown) {
   const parsed = beginFileUploadRequestSchema.safeParse(value);
-  if (!parsed.success) throw new TypeError("Invalid file upload request");
+  if (!parsed.success)
+    throw new AgentWorkplaceInputError("Invalid file upload request");
   return parsed.data;
 }
 
 export function parseFilesOrganizationRequest(value: unknown) {
   const result = filesOrganizationRequestSchema.safeParse(value);
   if (!result.success)
-    throw new TypeError("Invalid Files organization request");
+    throw new AgentWorkplaceInputError("Invalid Files organization request");
   return result.data;
 }
 
 export function parseRestoreFileRevisionRequest(value: unknown) {
   const parsed = restoreFileRevisionRequestSchema.safeParse(value);
-  if (!parsed.success) throw new TypeError("Invalid file restoration request");
+  if (!parsed.success)
+    throw new AgentWorkplaceInputError("Invalid file restoration request");
   return parsed.data;
 }
 
 export function parseFileTrashRequest(value: unknown): FileTrashRequest {
   const parsed = fileTrashRequestSchema.safeParse(value);
-  if (!parsed.success) throw new TypeError("Invalid file trash request");
+  if (!parsed.success)
+    throw new AgentWorkplaceInputError("Invalid file trash request");
   return parsed.data;
 }
 
 export function parseFileCopyRequest(value: unknown): BeginFileCopyRequest {
   const parsed = beginFileCopyRequestSchema.safeParse(value);
-  if (!parsed.success) throw new TypeError("Invalid file copy request");
+  if (!parsed.success)
+    throw new AgentWorkplaceInputError("Invalid file copy request");
   return parsed.data;
 }
 
 export function parseFileDeletionRequest(value: unknown): FileDeletionRequest {
   const parsed = fileDeletionRequestSchema.safeParse(value);
-  if (!parsed.success) throw new TypeError("Invalid file deletion request");
+  if (!parsed.success)
+    throw new AgentWorkplaceInputError("Invalid file deletion request");
   return parsed.data;
 }
