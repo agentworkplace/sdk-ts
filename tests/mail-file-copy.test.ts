@@ -94,6 +94,25 @@ it("persists independent frozen intent before admission and ignores inbound file
   expect(f.finalize).not.toHaveBeenCalled();
   expect(f.upload).toHaveBeenCalledOnce();
 });
+it("saves an attachment with a type Files refuses as plain bytes", async () => {
+  const f = fixture();
+  const downloaded = await f.download.getMockImplementation()!(auth, source);
+  f.download.mockResolvedValue({
+    ...downloaded,
+    attachment: { ...downloaded.attachment, contentType: "not a type" },
+  });
+  f.upload.mockResolvedValue(published);
+  let saved: string | undefined;
+  await f.client.copyMailAttachmentToFile(
+    auth,
+    { ...base, source },
+    async (intent) => {
+      saved = intent.request.contentType;
+    },
+  );
+  expect(saved).toBe("application/octet-stream");
+});
+
 it("does not admit destination when durable persistence fails", async () => {
   const f = fixture();
   await expect(

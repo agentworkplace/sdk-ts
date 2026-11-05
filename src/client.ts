@@ -211,6 +211,7 @@ import {
   agentCredentialSchema,
   agentKeyRevokedSchema,
   agentKeyRenamedSchema,
+  agentKeysRecoveredSchema,
   keyRotationResponseSchema,
   keyRotationCompletedSchema,
 } from "./contracts/credentials.js";
@@ -263,7 +264,11 @@ import {
   type FeedbackSubmission,
 } from "./contracts/feedback.js";
 
-import { AgentWorkplaceError, AgentWorkplaceInputError } from "./errors.js";
+import {
+  AgentWorkplaceError,
+  AgentWorkplaceInputError,
+  AgentWorkplaceNetworkError,
+} from "./errors.js";
 
 export interface AgentWorkplaceOptions {
   /** API base URL; defaults to https://api.agentworkplace.dev. */
@@ -2820,6 +2825,20 @@ export class AgentWorkplace {
       },
     );
   }
+  /** Revoke every other key of this key's own account, as recovery does. Issue and
+   * save a replacement first, then call this with it: a retry is harmless, and no
+   * step leaves the agent without a working key. */
+  recoverAgentKeysExceptCurrent(apiKey: string, accountId: string) {
+    return this.#request(
+      `v1/accounts/${encodeURIComponent(accountId)}/keys/recover`,
+      (value) => agentKeysRecoveredSchema.parse(value),
+      {
+        apiKey,
+        method: "POST",
+        body: JSON.stringify({ keepCurrentKey: true }),
+      },
+    );
+  }
   /** Active MCP agent grants of an agent, for the agent's key or an owner or
    * admin's dashboard session. Grant tokens cannot manage grants. */
   listAgentGrants(authorization: CredentialAuthorization, accountId: string) {
@@ -2947,7 +2966,13 @@ export class AgentWorkplace {
           [requestIdHeader]: requestId,
         },
       },
-    );
+    ).catch((cause: unknown) => {
+      if (cause instanceof TypeError)
+        throw new AgentWorkplaceNetworkError(
+          options.sensitiveResponse ? undefined : { cause },
+        );
+      throw cause;
+    });
     const returnedRequestId = responseRequestId(response);
     const retryAfterSeconds = responseRetryAfter(response);
 

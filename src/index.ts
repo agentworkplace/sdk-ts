@@ -7,7 +7,11 @@ export type {
   AgentWorkplaceOptions,
   CredentialAuthorization,
 } from "./client.js";
-export { AgentWorkplaceError, AgentWorkplaceInputError } from "./errors.js";
+export {
+  AgentWorkplaceError,
+  AgentWorkplaceInputError,
+  AgentWorkplaceNetworkError,
+} from "./errors.js";
 export type { DownloadOptions } from "./download-options.js";
 export {
   agentInvitationAcceptancePath,

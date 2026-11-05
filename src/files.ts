@@ -57,13 +57,27 @@ export function prepareFileUpload(
       contentMd5: base64(md5(part)),
     });
   }
-  return beginFileUploadRequestSchema.parse({
+  return preparedUploadRequest({
     ...input,
     byteLength: bytes.length,
     sha256: bytesToHex(sha256(bytes)),
     contentMd5: base64(md5(bytes)),
     multipartParts,
   });
+}
+
+/** Names the rejected input with a fixed message, never validation internals. */
+function preparedUploadRequest(value: unknown) {
+  const parsed = beginFileUploadRequestSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
+  const field = parsed.error.issues[0]?.path[0];
+  throw new AgentWorkplaceInputError(
+    field === "target"
+      ? "Invalid file name or destination"
+      : field === "contentType"
+        ? "Invalid media type; use type/subtype"
+        : "Invalid file upload request",
+  );
 }
 
 /** Creates the same immutable intent as prepareFileUpload without accumulating
@@ -112,7 +126,7 @@ export async function prepareFileUploadFromSource(
     throw new AgentWorkplaceInputError(
       "Upload source length changed during preparation",
     );
-  return beginFileUploadRequestSchema.parse({
+  return preparedUploadRequest({
     ...input,
     byteLength,
     sha256: bytesToHex(contentHash.digest()),

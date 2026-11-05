@@ -22,6 +22,19 @@ export const agentKeyListSchema = z
 export const agentCredentialSchema = z
   .object({ id: z.uuid(), key: z.string().min(1) })
   .strict();
+/** Replace every key, or keep the key authenticating this request and revoke the
+ * rest. The second form lets an agent save its replacement before losing access. */
+export const agentKeyRecoveryRequestSchema = z.union([
+  agentKeyNameSchema,
+  z.object({ keepCurrentKey: z.literal(true) }).strict(),
+]);
+export const agentKeysRecoveredSchema = z
+  .object({ recovered: z.literal(true), id: z.uuid() })
+  .strict();
+export const agentKeyRecoverySchema = z.union([
+  agentCredentialSchema,
+  agentKeysRecoveredSchema,
+]);
 export const agentKeyRevokedSchema = z
   .object({ revoked: z.literal(true) })
   .strict();

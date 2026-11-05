@@ -24,17 +24,23 @@ export const fileTargetSchema = z.union([
     .strict(),
   z.object({ fileId: z.uuid(), version: z.uuid() }).strict(),
 ]);
+const mediaTypeToken = "[!#$%&'*+.^_`|~0-9A-Za-z-]+";
+/** `type/subtype` with optional parameters, as a browser or client declares it.
+ * Stored revisions keep whatever they were uploaded with. */
+export const fileContentTypeSchema = z
+  .string()
+  .min(1)
+  .max(255)
+  .regex(/^[\x20-\x7e]+$/)
+  .regex(new RegExp(`^${mediaTypeToken}/${mediaTypeToken}\\s*(;.*)?$`));
+
 export const beginFileUploadRequestSchema = z
   .object({
     workplaceId: z.uuid(),
     operationId: z.uuid(),
     target: fileTargetSchema,
     byteLength: z.number().int().min(0).max(2_000_000_000),
-    contentType: z
-      .string()
-      .min(1)
-      .max(255)
-      .regex(/^[\x20-\x7e]+$/),
+    contentType: fileContentTypeSchema,
     sha256,
     contentMd5: digest,
     expiresAt: z.iso.datetime(),

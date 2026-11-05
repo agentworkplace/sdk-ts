@@ -43,3 +43,16 @@ export class AgentWorkplaceInputError extends TypeError {
     this.name = "AgentWorkplaceInputError";
   }
 }
+
+/**
+ * The request got no response, so it may or may not have reached the API. It
+ * extends `TypeError`, as `fetch` failures do, so existing checks keep working.
+ */
+export class AgentWorkplaceNetworkError extends TypeError {
+  readonly code = "network_error" as const;
+
+  constructor(options?: { cause?: unknown }) {
+    super("Unable to reach Agent Workplace", options);
+    this.name = "AgentWorkplaceNetworkError";
+  }
+}

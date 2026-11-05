@@ -1,5 +1,38 @@
 # @agent-workplace/sdk
 
+## 0.15.0
+
+### Minor Changes
+
+- Make every failure say what happened and what to do next.
+
+  - `--json` errors always have a `code`. New ones are `network_error`, `local_file`,
+    `cli_error` and `unexpected`, and refused requests add a `hint` with the next step.
+  - The SDK adds `AgentWorkplaceNetworkError`, a `TypeError` with `code: "network_error"`,
+    for a request that got no response. `prepareFileUpload` now rejects a bad name or
+    media type with a named `AgentWorkplaceInputError`.
+  - A retry with different inputs says to use a new `--operation` path for a new request.
+  - `--output -` is a usage error, instead of a file named `-`.
+
+- `recover-keys` on your own account can no longer lock you out. It saves a new key
+  first, then revokes the others with it through the new
+  `recoverAgentKeysExceptCurrent` SDK method, so a lost response or failed write leaves a
+  working key, and running it again finishes the job. `rotate-key` restores the previous
+  key once that key confirms a cancelled handoff, and clears a cancelled operation so a
+  rerun can start fresh. Rerunning `signup` keeps unfinished rotation state.
+
+### Patch Changes
+
+- Refuse a Files media type that isn't `type/subtype` with optional parameters. Copying a
+  Mail attachment whose sender declared such a type saves it as
+  `application/octet-stream` instead of failing.
+- Refuse an empty Mail body before anything is reserved, because the email provider
+  refuses it even with attachments. `mail send`, `reply` and `reply-all` name the empty
+  body, and `parseMailSendRequest` and `parseMailComposeRequest` reject it. A forward may
+  still have an empty introduction, since it carries the original message.
+- Add the common `service_unavailable` API error code.
+- Accept the dashboard's Settings pages as Google entry return paths.
+
 ## 0.14.0
 
 ### Minor Changes

@@ -110,8 +110,9 @@ export const mailAttachmentSelectionSchema = z
   .max(10);
 const outgoingAttachments = mailAttachmentSelectionSchema.optional();
 
-/** Up to ten unique recipients and one immutable UTF-8 plain-text body. */
-export const sendMailRequestSchema = z
+/** A request already admitted for sending. Stored sends may have empty text from
+ * before it was refused, so replaying one must still parse. */
+export const admittedMailRequestSchema = z
   .object({
     operationId: z.uuid(),
     mailboxId: z.uuid().optional(),
@@ -140,6 +141,12 @@ export const sendMailRequestSchema = z
   })
   .strict()
   .refine(validRecipients);
+
+/** Up to ten unique recipients and one immutable UTF-8 plain-text body. The
+ * provider refuses empty text even with attachments, so a new send needs some. */
+export const sendMailRequestSchema = admittedMailRequestSchema.refine(
+  (value) => value.text.length > 0,
+);
 export type SendMailRequest = z.infer<typeof sendMailRequestSchema>;
 
 /** Agent-authored reply/forward intent; destinations for replies are server-selected. */
@@ -161,7 +168,8 @@ export const composeMailRequestSchema = z
     value.kind === "forward"
       ? !!value.to &&
         validRecipients({ to: value.to, cc: value.cc, bcc: value.bcc })
-      : value.to === undefined &&
+      : value.text.length > 0 &&
+        value.to === undefined &&
         value.cc === undefined &&
         value.bcc === undefined,
   );

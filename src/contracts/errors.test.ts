@@ -30,6 +30,7 @@ describe("apiErrorCodeSchema", () => {
     expect(commonApiErrorCodes).toEqual({
       internalError: "internal_error",
       notFound: "not_found",
+      serviceUnavailable: "service_unavailable",
     });
   });
 });

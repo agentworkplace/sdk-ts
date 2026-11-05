@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  fileContentTypeSchema,
   fileDeletionRequestSchema,
   fileDeletionResultSchema,
   filesOrganizationRequestSchema,
@@ -306,7 +307,7 @@ it("accepts the full decimal cap in a bounded239-part wire declaration", () => {
       operationId: id,
       target: { name: "\\".repeat(255) },
       byteLength,
-      contentType: "\\".repeat(255),
+      contentType: `application/${"x".repeat(243)}`,
       sha256: "f".repeat(64),
       contentMd5: md5,
       expiresAt: "2026-09-17T12:00:00.000Z",
@@ -366,3 +367,20 @@ it("requires complete bounded distinct part presence only for open uploads", () 
     }).success,
   ).toBe(false);
 });
+
+it.each([
+  "text/plain",
+  "text/plain; charset=utf-8",
+  "text/plain;charset=UTF-8",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "image/svg+xml",
+])("accepts the media type %s", (value) => {
+  expect(fileContentTypeSchema.safeParse(value).success).toBe(true);
+});
+
+it.each(["not a type", "text", "text/", "/plain", "text/plain\n", ""])(
+  "refuses the media type %j",
+  (value) => {
+    expect(fileContentTypeSchema.safeParse(value).success).toBe(false);
+  },
+);

@@ -3,7 +3,10 @@ import {
   mailAttachmentDownloadRequestSchema,
   type MailAttachmentDownloadRequest,
 } from "./contracts/mail.js";
-import type { BeginFileUploadRequest } from "./contracts/files.js";
+import {
+  fileContentTypeSchema,
+  type BeginFileUploadRequest,
+} from "./contracts/files.js";
 import {
   prepareFileUpload,
   parseFileUploadRequest,
@@ -51,6 +54,14 @@ export function parseMailAttachmentFileCopyIntent(
   }
 }
 
+/** Senders choose attachment types, so one Files would refuse stays usable as
+ * plain bytes rather than failing the copy. */
+function copiedContentType(contentType: string | null | undefined) {
+  return fileContentTypeSchema.safeParse(contentType).success
+    ? contentType!
+    : "application/octet-stream";
+}
+
 export async function copyAttachmentToFile(
   client: CopyClient,
   auth: CredentialAuthorization,
@@ -75,8 +86,7 @@ export async function copyAttachmentToFile(
     request: prepareFileUpload(
       {
         ...destination,
-        contentType:
-          downloaded.attachment.contentType ?? "application/octet-stream",
+        contentType: copiedContentType(downloaded.attachment.contentType),
       },
       downloaded.bytes,
     ),
