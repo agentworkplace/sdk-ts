@@ -342,3 +342,134 @@ export type OwnerEmailResend = z.infer<typeof ownerEmailResendSchema>;
 export type OwnerEmailOperationReference = z.infer<
   typeof ownerEmailOperationReferenceSchema
 >;
+
+/** A dashboard continuation is local data carried through admission. Google's
+ * redirect URI and the dashboard callback URL are always API configuration. */
+export const googleDashboardReturnSchema = z
+  .string()
+  .max(3000)
+  .refine((value) => {
+    const origin = "https://dashboard.invalid";
+    if (!value.startsWith("/") || !URL.canParse(value, origin)) return false;
+    const url = new URL(value, origin);
+    if (
+      url.origin !== origin ||
+      url.pathname !== "/" ||
+      value !== url.pathname + url.search + url.hash
+    )
+      return false;
+    if (url.hash) return value === "/#owner-email";
+    const keys = [...url.searchParams.keys()];
+    if (!keys.length) return value === "/";
+    if (keys.length === 1 && keys[0] === "next") {
+      const next = url.searchParams.get("next")!;
+      if (
+        [
+          "/overview",
+          "/accounts",
+          "/mail",
+          "/files",
+          "/chat",
+          "/settings",
+        ].includes(next)
+      )
+        return true;
+      if (
+        !next.startsWith("/") ||
+        next.startsWith("//") ||
+        next.includes("\\") ||
+        !URL.canParse(next, origin)
+      )
+        return false;
+      const target = new URL(next, origin);
+      return (
+        target.origin === origin &&
+        !target.hash &&
+        ["/oauth/sign-in", "/oauth/device"].includes(target.pathname)
+      );
+    }
+    const receipt = url.searchParams.get("billing_purchase"),
+      outcome = url.searchParams.get("billing_return");
+    return (
+      keys.length === new Set(keys).size &&
+      keys.every((k) => k === "billing_purchase" || k === "billing_return") &&
+      !!receipt &&
+      z.uuidv4().safeParse(receipt).success &&
+      (!outcome || outcome === "success" || outcome === "cancel")
+    );
+  });
+export const googleEntryRequestSchema = z.union([
+  z
+    .object({
+      action: z.literal("start"),
+      dashboardReturn: googleDashboardReturnSchema.optional(),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.enum([
+        "status",
+        "send",
+        "login",
+        "link",
+        "create",
+        "disconnect",
+        "cancel",
+      ]),
+    })
+    .strict(),
+  z
+    .object({ action: z.literal("verify"), code: z.string().regex(/^\d{6}$/) })
+    .strict(),
+]);
+export const googleConnectionRequestSchema = z
+  .object({ action: z.enum(["connection", "disconnect-start"]) })
+  .strict();
+export type GoogleEntryRequest =
+  | z.infer<typeof googleEntryRequestSchema>
+  | z.infer<typeof googleConnectionRequestSchema>;
+export const googleEntryResponseSchema = z.union([
+  z
+    .object({
+      phase: z.literal("redirect"),
+      url: z.url().refine((value) => {
+        if (!URL.canParse(value)) return false;
+        const url = new URL(value);
+        return (
+          url.origin === "https://accounts.google.com" &&
+          url.pathname === "/o/oauth2/v2/auth" &&
+          !url.username &&
+          !url.password
+        );
+      }),
+    })
+    .strict(),
+  z
+    .object({
+      phase: z.enum([
+        "code",
+        "login",
+        "link",
+        "create",
+        "disconnect",
+        "unavailable",
+      ]),
+      email: z.email(),
+      dashboardReturn: googleDashboardReturnSchema,
+    })
+    .strict(),
+  z.object({ phase: z.literal("connection"), linked: z.boolean() }).strict(),
+  z
+    .object({
+      phase: z.literal("done"),
+      dashboardReturn: googleDashboardReturnSchema,
+    })
+    .strict(),
+]);
+export type GoogleEntryResponse = z.infer<typeof googleEntryResponseSchema>;
+export const humanNameSetupRequestSchema = z
+  .object({ action: z.enum(["read", "skip"]) })
+  .strict();
+export const humanNameSetupResponseSchema = z
+  .object({ pending: z.boolean(), suggestion: z.string().max(100).nullable() })
+  .strict();

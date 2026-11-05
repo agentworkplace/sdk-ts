@@ -1,3 +1,7 @@
+export type {
+  GoogleEntryRequest,
+  GoogleEntryResponse,
+} from "./contracts/access.js";
 export { AgentWorkplace } from "./client.js";
 export type {
   AgentWorkplaceOptions,

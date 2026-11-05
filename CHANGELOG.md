@@ -1,5 +1,11 @@
 # @agent-workplace/sdk
 
+## 0.14.0
+
+### Minor Changes
+
+- Add browser methods for Google dashboard entry and optional first-entry display-name setup.
+
 ## 0.13.0
 
 ### Minor Changes

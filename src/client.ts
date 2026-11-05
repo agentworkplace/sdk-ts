@@ -1,4 +1,9 @@
 import {
+  googleEntryResponseSchema,
+  humanNameSetupResponseSchema,
+  type GoogleEntryRequest,
+} from "./contracts/access.js";
+import {
   chatAddRequestSchema,
   chatConversationRequestSchema,
   chatConversationSchema,
@@ -2338,6 +2343,34 @@ export class AgentWorkplace {
         method: "POST",
         apiKey,
         body: JSON.stringify(input),
+      },
+    );
+  }
+
+  googleEntry(input: GoogleEntryRequest) {
+    return this.#request(
+      input.action === "connection" || input.action === "disconnect-start"
+        ? "v1/access/google/connection"
+        : "v1/access/google/entry",
+      (value) => googleEntryResponseSchema.parse(value),
+      {
+        method: "POST",
+        credentials: "include",
+        body: JSON.stringify(input),
+        sensitiveResponse: true,
+      },
+    );
+  }
+
+  humanNameSetup(action: "read" | "skip") {
+    return this.#request(
+      "v1/access/name-setup",
+      (value) => humanNameSetupResponseSchema.parse(value),
+      {
+        method: "POST",
+        credentials: "include",
+        body: JSON.stringify({ action }),
+        sensitiveResponse: true,
       },
     );
   }
