@@ -1,6 +1,10 @@
 import { afterEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 
-import { AgentWorkplace, AgentWorkplaceError } from "../src/index.js";
+import {
+  AgentWorkplace,
+  AgentWorkplaceError,
+  AgentWorkplaceNetworkError,
+} from "../src/index.js";
 import type {
   AccountAccessStatus,
   AgentWorkplaceOptions,
@@ -419,7 +423,7 @@ describe("AgentWorkplace", () => {
     });
   });
 
-  it("preserves native fetch failures", async () => {
+  it("reports a lost connection with its cause", async () => {
     const networkError = new TypeError("fetch failed");
     const fetch = vi.fn<typeof globalThis.fetch>(async () =>
       Promise.reject(networkError),
@@ -429,9 +433,11 @@ describe("AgentWorkplace", () => {
       fetch,
     });
 
-    await expect(client.accountStatus(authorization)).rejects.toBe(
-      networkError,
-    );
+    const failure = await client.accountStatus(authorization).catch((e) => e);
+    expect(failure).toBeInstanceOf(AgentWorkplaceNetworkError);
+    expect(failure).toBeInstanceOf(TypeError);
+    expect(failure.code).toBe("network_error");
+    expect(failure.cause).toBe(networkError);
     expect(fetch).toHaveBeenCalledOnce();
     expect(String(fetch.mock.calls[0]?.[0])).toBe(
       "https://staging-api.agentworkplace.dev/v1/access/account",

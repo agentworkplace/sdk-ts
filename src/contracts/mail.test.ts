@@ -10,6 +10,8 @@ import {
   mailBodyRepresentationSchema,
   mailMessageSchema,
   mailCorrespondenceSchema,
+  admittedMailRequestSchema,
+  composeMailRequestSchema,
   sendMailRequestSchema,
 } from "./mail.js";
 const request = {
@@ -52,11 +54,34 @@ test.each([
     sendMailRequestSchema.safeParse({ ...request, ...change }).success,
   ).toBe(false);
 });
-test("intentional empty plain text remains valid", () => {
+test("a new send needs text, and an admitted empty send still parses", () => {
+  const empty = { ...request, text: "", subject: "" };
+  expect(sendMailRequestSchema.safeParse(empty).success).toBe(false);
+  expect(admittedMailRequestSchema.safeParse(empty).success).toBe(true);
   expect(
-    sendMailRequestSchema.safeParse({ ...request, text: "", subject: "" })
+    sendMailRequestSchema.safeParse({ ...request, text: " ", subject: "" })
       .success,
   ).toBe(true);
+});
+
+test("only a forward may have an empty introduction", () => {
+  const compose = {
+    operationId: "11111111-1111-4111-8111-111111111111",
+    sourceMessageId: "22222222-2222-4222-8222-222222222222",
+    subject: "Fwd: Hello",
+    text: "",
+  };
+  expect(
+    composeMailRequestSchema.safeParse({
+      ...compose,
+      kind: "forward",
+      to: ["someone@example.com"],
+    }).success,
+  ).toBe(true);
+  for (const kind of ["reply", "reply_all"])
+    expect(
+      composeMailRequestSchema.safeParse({ ...compose, kind }).success,
+    ).toBe(false);
 });
 
 test("validates truthful operation states and receipt availability", async () => {

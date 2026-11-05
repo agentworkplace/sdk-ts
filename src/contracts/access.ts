@@ -365,12 +365,18 @@ export const googleDashboardReturnSchema = z
       const next = url.searchParams.get("next")!;
       if (
         [
+          // Removed, but a sign-in started before the change may still name it;
+          // the dashboard redirects it to Accounts.
           "/overview",
           "/accounts",
           "/mail",
           "/files",
           "/chat",
           "/settings",
+          "/settings/workplace",
+          "/settings/billing",
+          "/settings/usage",
+          "/settings/account",
         ].includes(next)
       )
         return true;

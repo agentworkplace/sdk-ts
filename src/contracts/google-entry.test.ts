@@ -32,6 +32,18 @@ it("only allows a redirect to the Google authorization endpoint", () => {
 });
 
 it("allows dashboard sections and signed MCP handoffs only as local root continuations", () => {
+  for (const section of [
+    "/settings",
+    "/settings/workplace",
+    "/settings/billing",
+    "/settings/usage",
+    "/settings/account",
+  ])
+    expect(
+      googleDashboardReturnSchema.safeParse(
+        "/?" + new URLSearchParams({ next: section }),
+      ).success,
+    ).toBe(true);
   const next = "/oauth/device?user_code=synthetic";
   expect(
     googleDashboardReturnSchema.safeParse("/?" + new URLSearchParams({ next }))
@@ -43,6 +55,7 @@ it("allows dashboard sections and signed MCP handoffs only as local root continu
     "/other",
     "/?next=//other.test",
     "/?next=/unknown",
+    "/?next=/settings/unknown",
     "/?token=value",
     "/#private",
   ])

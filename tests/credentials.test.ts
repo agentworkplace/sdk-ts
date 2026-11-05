@@ -127,6 +127,26 @@ describe("credential HTTP transport", () => {
       `https://api.example.test/v1/accounts/${accountId}/keys/recover`,
     );
   });
+  it("revokes other keys with the saved replacement", async () => {
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(Response.json({ recovered: true, id }));
+    const client = new AgentWorkplace({
+      baseUrl: "https://api.example.test",
+      fetch,
+    });
+    await expect(
+      client.recoverAgentKeysExceptCurrent("replacement-secret", accountId),
+    ).resolves.toEqual({ recovered: true, id });
+    const [url, init] = fetch.mock.calls[0]!;
+    expect(url.toString()).toBe(
+      `https://api.example.test/v1/accounts/${accountId}/keys/recover`,
+    );
+    expect(init?.body).toBe(JSON.stringify({ keepCurrentKey: true }));
+    expect(new Headers(init?.headers).get("Authorization")).toBe(
+      "Bearer replacement-secret",
+    );
+  });
   it("uses native browser cookies only when explicitly requested and rejects secrets in metadata", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()

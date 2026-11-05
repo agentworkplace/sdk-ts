@@ -9,6 +9,7 @@ export type ApiErrorCode = z.infer<typeof apiErrorCodeSchema>;
 export const commonApiErrorCodes = {
   internalError: "internal_error",
   notFound: "not_found",
+  serviceUnavailable: "service_unavailable",
 } as const satisfies Record<string, ApiErrorCode>;
 
 export const apiErrorSchema = z.object({
