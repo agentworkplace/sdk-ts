@@ -295,3 +295,36 @@ it("requires HTTPS or loopback HTTP even without an API key", async () => {
   ).rejects.toThrowError("HTTPS or loopback HTTP");
   expect(fetch).not.toHaveBeenCalled();
 });
+
+it("sends Google proof, account settings and display name requests to their intended cookie routes", async () => {
+  const transport = vi
+    .fn<typeof fetch>()
+    .mockResolvedValueOnce(
+      Response.json({
+        phase: "code",
+        email: "human@example.test",
+        dashboardReturn: "/",
+      }),
+    )
+    .mockResolvedValueOnce(Response.json({ phase: "connection", linked: true }))
+    .mockResolvedValueOnce(Response.json({ pending: false, suggestion: null }));
+  const client = new AgentWorkplace({
+    baseUrl: "https://api.example.test",
+    fetch: transport,
+  });
+  await client.googleEntry({ action: "status" });
+  await client.googleEntry({ action: "connection" });
+  await client.humanNameSetup("skip");
+  expect(
+    transport.mock.calls.map(([url, options]) => [
+      new URL(url.toString()).pathname,
+      options?.method,
+      options?.credentials,
+      options?.redirect,
+    ]),
+  ).toEqual([
+    ["/v1/access/google/entry", "POST", "include", "error"],
+    ["/v1/access/google/connection", "POST", "include", "error"],
+    ["/v1/access/name-setup", "POST", "include", "error"],
+  ]);
+});
