@@ -1,5 +1,11 @@
 # @agent-workplace/sdk
 
+## 0.16.0
+
+### Minor Changes
+
+- `accountStatus` now returns `currentKeyId` when a key authenticates the request. In the CLI, `keys` marks that key with `current: true`, and `revoke-key` refuses it unless you pass `--allow-current`. Older APIs omit the field, so the CLI then shows no marker and applies no check.
+
 ## 0.15.0
 
 ### Minor Changes

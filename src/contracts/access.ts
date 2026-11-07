@@ -237,6 +237,8 @@ export type DeletionStatusView = z.infer<typeof deletionStatusViewSchema>;
 
 /** Current admitted account, independent of creator enrollment and private profiles. */
 const accountIdentitySchema = z.object({
+  /** The key authenticating this request; absent for grants and human sessions. */
+  currentKeyId: z.uuid().optional(),
   mailbox: mailboxSchema.optional(),
   storage: storageUsageSchema.optional(),
   accountId: z.uuid(),
