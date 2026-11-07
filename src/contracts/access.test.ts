@@ -110,6 +110,10 @@ describe("access wire contracts", () => {
       },
     };
     expect(accountAccessStatusSchema.parse(status)).toEqual(status);
+    const currentKeyId = "11111111-1111-4111-8111-111111111111";
+    expect(
+      accountAccessStatusSchema.parse({ ...status, currentKeyId }),
+    ).toEqual({ ...status, currentKeyId });
     const storage = {
       limitBytes: 100000000,
       usedBytes: 64,
