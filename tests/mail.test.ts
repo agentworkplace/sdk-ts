@@ -7,7 +7,7 @@ import {
 const mailbox = {
   mailboxId: "11111111-1111-4111-8111-111111111111",
   accountId: "22222222-2222-4222-8222-222222222222",
-  address: "sample@mail.agentworkplace.dev",
+  address: "sample@awmail.ai",
 };
 test("mailbox discovery uses API authorization, pagination and validated responses", async () => {
   const fetch = vi

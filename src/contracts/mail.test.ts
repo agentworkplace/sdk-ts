@@ -229,6 +229,34 @@ test("admits ten unique visible/hidden recipients with deterministic visible ded
     "case@example.test",
     "case+tag@example.test",
   ]);
+  expect(
+    normalizeMailRecipients({
+      to: ["Agent@AWMAIL.AI", "agent@awmail.ai", "Agent@awmail.ai.example"],
+    }).to,
+  ).toEqual(["agent@awmail.ai", "Agent@awmail.ai.example"]);
+});
+
+test("mailbox previous address is optional, nullable and an email", async () => {
+  const { mailboxSchema } = await import("./mail.js");
+  const base = {
+    mailboxId: "00000000-0000-4000-8000-000000000001",
+    accountId: "00000000-0000-4000-8000-000000000002",
+    address: "agent@awmail.ai",
+  };
+  expect(mailboxSchema.safeParse(base).success).toBe(true);
+  expect(
+    mailboxSchema.safeParse({ ...base, previousAddress: null }).success,
+  ).toBe(true);
+  expect(
+    mailboxSchema.safeParse({
+      ...base,
+      previousAddress: "agent@mail.agentworkplace.dev",
+    }).success,
+  ).toBe(true);
+  expect(
+    mailboxSchema.safeParse({ ...base, previousAddress: "not an address" })
+      .success,
+  ).toBe(false);
 });
 
 test.each([
