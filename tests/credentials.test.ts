@@ -60,7 +60,7 @@ describe("credential HTTP transport", () => {
     // Addresses arrive only when asked for, so older shapes stay strict.
     const withAddresses = participants.map((participant) => ({
       ...participant,
-      mailboxAddress: "agent@mail.agentworkplace.dev",
+      mailboxAddress: "agent@awmail.ai",
     }));
     fetch.mockImplementation(async () =>
       Response.json({ participants: withAddresses }),

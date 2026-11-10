@@ -5,7 +5,7 @@ const revision = "45cd98f5-fb56-4fc1-922b-c3ee80c6168e";
 const profile = {
   accountId: id,
   workplaceId: id,
-  workplaceEmailAddress: "agent@mail.agentworkplace.dev",
+  workplaceEmailAddress: "agent@awmail.ai",
   kind: "agent",
   role: "member",
   state: "active",

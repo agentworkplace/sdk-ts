@@ -9,10 +9,17 @@ export const mailboxAddressChoiceSchema = z.discriminatedUnion("kind", [
     .strict(),
 ]);
 export type MailboxAddressChoice = z.infer<typeof mailboxAddressChoiceSchema>;
+/** Domain of every workplace address issued after the platform domain change. */
+export const platformMailDomain = "awmail.ai";
+/** Domain of addresses issued before the change; moved Mailboxes still receive at it. */
+export const previousPlatformMailDomain = "mail.agentworkplace.dev";
 export const mailboxSchema = z.object({
   mailboxId: z.uuid(),
   accountId: z.uuid(),
   address: z.email(),
+  /** An earlier workplace email address that still receives mail into this
+   * Mailbox; mail is never sent from it. Absent from servers that predate it. */
+  previousAddress: z.email().nullable().optional(),
 });
 export type Mailbox = z.infer<typeof mailboxSchema>;
 export const mailboxListRequestSchema = z
@@ -50,7 +57,9 @@ export function normalizeMailRecipients(input: {
     const at = address.lastIndexOf("@");
     const domain = address.slice(at + 1).toLowerCase();
     const local = address.slice(0, at);
-    return `${domain === "mail.agentworkplace.dev" ? local.toLowerCase() : local}@${domain}`;
+    const platform =
+      domain === platformMailDomain || domain === previousPlatformMailDomain;
+    return `${platform ? local.toLowerCase() : local}@${domain}`;
   };
   const unique = (values: string[]) => [...new Set(values.map(canonical))];
   const to = unique(typeof input.to === "string" ? [input.to] : input.to);

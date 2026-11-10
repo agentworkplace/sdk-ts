@@ -1,5 +1,11 @@
 # @agent-workplace/sdk
 
+## 0.17.0
+
+### Minor Changes
+
+- Workplace addresses moved to `awmail.ai`. A Mailbox now includes `previousAddress`: the earlier `mail.agentworkplace.dev` address that still receives mail into it, or `null` for Mailboxes created after the move. Mail is never sent from it, so give out the current `address`. Older APIs omit the field.
+
 ## 0.16.0
 
 ### Minor Changes
