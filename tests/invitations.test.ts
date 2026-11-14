@@ -71,16 +71,21 @@ describe("invitation SDK transport", () => {
       method: "GET",
     });
   });
-  it("rejects provider data in the notification projection", async () => {
-    const client = new AgentWorkplace({
-      fetch: async () =>
-        Response.json({ status: "accepted", providerId: "private" }),
-    });
+  it("never returns provider data in the notification projection", async () => {
+    const fetch = async () =>
+      Response.json({ status: "accepted", providerId: "private" });
+    const client = new AgentWorkplace({ fetch });
     await expect(
       client.getInvitationNotificationStatus(
         { apiKey: "test-key" },
         invitation.id,
       ),
+    ).resolves.toStrictEqual({ status: "accepted" });
+    await expect(
+      new AgentWorkplace({
+        fetch,
+        unknownResponseFields: "reject",
+      }).getInvitationNotificationStatus({ apiKey: "test-key" }, invitation.id),
     ).rejects.toBeInstanceOf(AgentWorkplaceError);
   });
 
@@ -128,7 +133,7 @@ describe("invitation SDK transport", () => {
       expect(JSON.parse(init!.body as string)).toEqual(input);
     },
   );
-  it("rejects terminal metadata instead of exposing an expanded response", async () => {
+  it("removes terminal metadata instead of exposing an expanded response", async () => {
     const client = new AgentWorkplace({
       baseUrl: "https://api.example.test",
       fetch: async () =>
@@ -136,7 +141,7 @@ describe("invitation SDK transport", () => {
     });
     await expect(
       client.previewHumanInvitation({ invitationId: invitation.id, code }),
-    ).rejects.toBeInstanceOf(AgentWorkplaceError);
+    ).resolves.toStrictEqual({ status: "used" });
   });
   it("issues human invitations with admin authority and accepts with cookie-only human requests", async () => {
     const fetch = vi

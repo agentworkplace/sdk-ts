@@ -73,7 +73,7 @@ test("choice conflicts preserve safe revision and request identity, malformed ma
   });
   await expect(
     client.getMailbox({ apiKey: "test" }, mailbox.mailboxId),
-  ).rejects.toMatchObject({ status: 200, code: undefined });
+  ).rejects.toMatchObject({ status: 200, code: "invalid_response" });
 });
 
 test("correspondence retrieval uses HTTP only and preserves exact representations and safe response contracts", async () => {
@@ -141,9 +141,10 @@ test("correspondence retrieval uses HTTP only and preserves exact representation
       (call) => !call[1]?.body && call[1]?.method === "GET",
     ),
   ).toBe(true);
+  // Content beside an absent body is removed, never surfaced as the body.
   await expect(
     client.getMailMessage({ apiKey: "private" }, mailbox.accountId),
-  ).rejects.toThrow("invalid response");
+  ).resolves.toStrictEqual(message);
 });
 
 test("lifecycle uses POST with explicit targeting and never retries an uncertain response", async () => {
@@ -180,7 +181,8 @@ test("lifecycle uses POST with explicit targeting and never retries an uncertain
   );
   await expect(
     client.trashMailMessage({ apiKey: "private" }, mailbox.accountId),
-  ).rejects.toThrow("invalid response");
+  ).resolves.toStrictEqual({ acknowledged: true });
+  expect(fetch).toHaveBeenCalledTimes(5);
 });
 
 test("public request parser makes a bounded valid copy suitable for a private retry receipt", () => {
@@ -339,7 +341,7 @@ test("sender blocks use bounded authorized HTTP and validate returned state", as
   ).rejects.toThrow();
 });
 
-test("attachment status uses bounded HTTP pagination and validates responses", async () => {
+test("attachment status uses bounded HTTP pagination and removes unknown response fields", async () => {
   const page = {
     messageId: mailbox.accountId,
     attachments: [],
@@ -366,7 +368,7 @@ test("attachment status uses bounded HTTP pagination and validates responses", a
   );
   await expect(
     client.listMailAttachments({ apiKey: "private" }, mailbox.accountId),
-  ).rejects.toThrow();
+  ).resolves.toStrictEqual(page);
 });
 
 test("pending preparation discovery uses the API and keeps cursor scope opaque", async () => {
@@ -535,7 +537,7 @@ test("Mail catch-up clients preserve opaque cursors, gaps, scope and response va
   ).rejects.toMatchObject({
     name: "AgentWorkplaceError",
     status: 200,
-    code: undefined,
+    code: "invalid_response",
   });
 });
 

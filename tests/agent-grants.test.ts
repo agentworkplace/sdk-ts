@@ -54,14 +54,21 @@ describe("agent grant transport", () => {
     expect(header(fetch, 1)).toBeNull();
   });
 
-  it("rejects grant lists that expose more than the safe projection", async () => {
-    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+  it("never returns more than the safe grant projection", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
       Response.json({
         grants: [{ ...grant, clientId: "https://claude.ai/client.json" }],
       }),
     );
     await expect(
       client(fetch).listAgentGrants({ apiKey: "key" }, accountId),
+    ).resolves.toStrictEqual({ grants: [grant] });
+    await expect(
+      new AgentWorkplace({
+        baseUrl: "https://api.example.test",
+        fetch,
+        unknownResponseFields: "reject",
+      }).listAgentGrants({ apiKey: "key" }, accountId),
     ).rejects.toThrow("invalid response");
   });
 

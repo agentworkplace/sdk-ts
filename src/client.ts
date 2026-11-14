@@ -269,6 +269,8 @@ import {
   AgentWorkplaceInputError,
   AgentWorkplaceNetworkError,
 } from "./errors.js";
+import { parseIgnoringUnknownFields } from "./unknown-fields.js";
+import { sdkVersion } from "./version.js";
 
 export interface AgentWorkplaceOptions {
   /** API base URL; defaults to https://api.agentworkplace.dev. */
@@ -277,7 +279,25 @@ export interface AgentWorkplaceOptions {
   /** Fetch for API-issued Files byte grants; defaults to the configured fetch.
    * Use a separate transport when API admission adds private headers. */
   transferFetch?: typeof globalThis.fetch;
+  /** Response fields this SDK version does not know. `"ignore"` (the default)
+   * removes them, so a newer API's added fields don't break the client.
+   * `"reject"` fails with `invalid_response`, for contract tests that must
+   * notice any field the API adds. */
+  unknownResponseFields?: "ignore" | "reject";
+  /** Product tokens naming the application, such as `my-agent/1.2.0`, sent
+   * before `agent-workplace-sdk/<version>` in `User-Agent`. Server runtimes
+   * send the header; browsers don't, so it never adds a CORS preflight. */
+  userAgent?: string;
 }
+
+/** One or two `name/version` tokens; no comments, spaces or control text. */
+const userAgentPattern =
+  /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}\/[A-Za-z0-9][A-Za-z0-9.+-]{0,39}(?: [A-Za-z0-9][A-Za-z0-9._-]{0,39}\/[A-Za-z0-9][A-Za-z0-9.+-]{0,39})?$/;
+
+/** Node, Bun and Deno report a Node version; browsers and their bundles don't. */
+const serverRuntime = () =>
+  typeof (globalThis as { process?: { versions?: { node?: unknown } } }).process
+    ?.versions?.node === "string";
 
 /** An agent key, an MCP agent grant access token, or the dashboard session. */
 export type CredentialAuthorization =
@@ -400,6 +420,8 @@ export class AgentWorkplace {
   readonly #baseUrl: URL;
   readonly #fetch: typeof globalThis.fetch;
   readonly #transferFetch: typeof globalThis.fetch;
+  readonly #rejectUnknownFields: boolean;
+  readonly #userAgent: string | undefined;
 
   constructor(options: AgentWorkplaceOptions = {}) {
     if (
@@ -433,6 +455,26 @@ export class AgentWorkplace {
         "A Files Fetch API implementation is required",
       );
     this.#transferFetch = transferFetch;
+    const unknownFields = options.unknownResponseFields ?? "ignore";
+    if (unknownFields !== "ignore" && unknownFields !== "reject")
+      throw new AgentWorkplaceInputError(
+        'unknownResponseFields must be "ignore" or "reject"',
+      );
+    this.#rejectUnknownFields = unknownFields === "reject";
+    if (
+      options.userAgent !== undefined &&
+      (typeof options.userAgent !== "string" ||
+        !userAgentPattern.test(options.userAgent))
+    )
+      throw new AgentWorkplaceInputError(
+        "userAgent must be one or two name/version tokens",
+      );
+    const product = `agent-workplace-sdk/${sdkVersion}`;
+    this.#userAgent = serverRuntime()
+      ? options.userAgent === undefined
+        ? product
+        : `${options.userAgent} ${product}`
+      : undefined;
   }
 
   /** `order: "activity"` lists the most recently created or posted-to
@@ -2964,6 +3006,9 @@ export class AgentWorkplace {
             ? {}
             : { Authorization: `Bearer ${options.apiKey}` }),
           [requestIdHeader]: requestId,
+          ...(this.#userAgent === undefined
+            ? {}
+            : { "User-Agent": this.#userAgent }),
         },
       },
     ).catch((cause: unknown) => {
@@ -3033,12 +3078,15 @@ export class AgentWorkplace {
     }
 
     try {
-      return parse(body);
+      return this.#rejectUnknownFields
+        ? parse(body)
+        : parseIgnoringUnknownFields(parse, body);
     } catch (cause) {
       throw new AgentWorkplaceError(
         "The Agent Workplace API returned an invalid response",
         {
           status: response.status,
+          code: "invalid_response",
           ...(options.sensitiveResponse ? {} : { cause }),
           retryAfterSeconds,
           requestId: returnedRequestId,

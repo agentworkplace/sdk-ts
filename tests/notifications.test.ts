@@ -228,7 +228,7 @@ test("private endpoint responses never survive as parsing error causes", async (
     )
     .mockResolvedValueOnce(
       Response.json({
-        endpoints: [{ ...endpoint, "private-extra-key": "private-token" }],
+        endpoints: [{ ...endpoint, createdAt: "private-token" }],
         status: endpointStatus,
       }),
     )
@@ -260,6 +260,16 @@ test("private endpoint responses never survive as parsing error causes", async (
     expect((error as Error).cause).toBeUndefined();
     expect(String(error)).not.toContain("private");
   }
+  // An unknown key is removed rather than failing, so it never surfaces either.
+  fetch.mockResolvedValueOnce(
+    Response.json({
+      endpoints: [{ ...endpoint, "private-extra-key": "private-token" }],
+      status: endpointStatus,
+    }),
+  );
+  const listed = await client.listNotificationEndpoints({ apiKey: "key" });
+  expect(listed.endpoints[0]).toStrictEqual(endpoint);
+  expect(JSON.stringify(listed)).not.toContain("private-token");
 });
 
 test("endpoint failures retain safe server codes, request IDs and retry delays", async () => {

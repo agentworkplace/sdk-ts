@@ -39,7 +39,10 @@ it.each([{ apiKey: "fixture-key" }, { humanSession: true as const }])(
     expect(await client.getBillingSummary(authority)).toEqual(summary);
     expect(await client.getBillingStatus(authority)).toEqual(status);
     await expect(client.getBillingSummary(authority)).rejects.toThrow();
-    await expect(client.getBillingSummary(authority)).rejects.toThrow();
+    // A private field the SDK does not know is removed, never returned.
+    await expect(client.getBillingSummary(authority)).resolves.toStrictEqual(
+      summary,
+    );
     expect(new URL(String(fetch.mock.calls[0]![0])).pathname).toBe(
       "/v1/workplace/billing/summary",
     );
@@ -75,7 +78,7 @@ it.each([{ apiKey: "fixture-key" }, { humanSession: true as const }])(
     }
   },
 );
-it("preserves role denial and rejects malformed billing responses", async () => {
+it("preserves role denial, removes unknown fields and rejects unknown values", async () => {
   const fetch = vi
     .fn<typeof globalThis.fetch>()
     .mockResolvedValueOnce(
@@ -96,7 +99,21 @@ it("preserves role denial and rejects malformed billing responses", async () => 
   ).rejects.toMatchObject({ status: 401, code: "access_denied" });
   await expect(
     client.getBillingStatus({ apiKey: "fixture-key" }),
-  ).rejects.toThrow();
+  ).resolves.toStrictEqual(status);
+  fetch.mockResolvedValueOnce(
+    Response.json({ ...status, stripeCustomer: "cus_private" }),
+  );
+  await expect(
+    new AgentWorkplace({
+      baseUrl: "https://api.example.test",
+      fetch,
+      unknownResponseFields: "reject",
+    }).getBillingStatus({ apiKey: "fixture-key" }),
+  ).rejects.toMatchObject({ code: "invalid_response" });
+  fetch.mockResolvedValueOnce(Response.json({ ...status, plan: "enterprise" }));
+  await expect(
+    client.getBillingStatus({ apiKey: "fixture-key" }),
+  ).rejects.toMatchObject({ code: "invalid_response" });
 });
 
 it.each([{ apiKey: "fixture-key" }, { humanSession: true as const }])(

@@ -290,7 +290,7 @@ describe("AgentWorkplace", () => {
     expect(error).toBeInstanceOf(AgentWorkplaceError);
     expect(error).toMatchObject({
       status: 200,
-      code: undefined,
+      code: "invalid_response",
       message: "The Agent Workplace API returned an invalid response",
     });
     expect((error as Error).cause).toBeDefined();
