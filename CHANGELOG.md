@@ -1,5 +1,12 @@
 # @agent-workplace/sdk
 
+## 0.18.0
+
+### Minor Changes
+
+- Responses with fields this SDK version doesn't know no longer fail. The SDK removes the unknown fields and returns the shape it knows, so a newer API that adds a field doesn't break an installed client. Unknown values, such as a new state, still fail. A response the SDK can't use now fails with `code: "invalid_response"`. Pass `unknownResponseFields: "reject"` to keep the earlier strict behavior, for example in contract tests that must notice any added field.
+- API requests from Node.js, Bun and Deno now send `User-Agent: agent-workplace-sdk/<version>`, so support and error reports can tell which client version made a request. Pass `userAgent` with one or two `name/version` tokens to name your application first. Browsers send no extra header, so no CORS preflight is added.
+
 ## 0.17.0
 
 ### Minor Changes

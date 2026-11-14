@@ -276,11 +276,11 @@ test("account summaries are parsed only when requested, preserving older respons
   const fetch = vi.fn<typeof globalThis.fetch>();
   const client = new AgentWorkplace({ fetch });
   const page = { entries: [message], nextAfter: null, latestSequence: "1" };
-  // An unrequested field still fails strict validation, as in earlier SDKs.
+  // An unrequested field is removed, leaving the older response shape.
   fetch.mockResolvedValueOnce(Response.json({ ...conversation, accounts: [] }));
   await expect(
     client.getChatConversation(authorization, conversationId),
-  ).rejects.toMatchObject({ name: "AgentWorkplaceError" });
+  ).resolves.toStrictEqual(conversation);
   // A server that ignores the option cannot satisfy a request for summaries.
   fetch.mockResolvedValueOnce(Response.json(page));
   await expect(
@@ -366,11 +366,14 @@ test("activity listing sends opt-in options and parses exactly the requested add
   expect(String(fetch.mock.calls[1]![0])).toMatch(
     /\/v1\/chat\/conversations\?limit=20$/,
   );
-  // Unrequested or missing additions fail strict validation.
+  // Unrequested additions are removed; missing ones still fail validation.
   fetch.mockResolvedValueOnce(Response.json(page));
   await expect(
     client.listChatConversations(authorization),
-  ).rejects.toMatchObject({ name: "AgentWorkplaceError" });
+  ).resolves.toStrictEqual({
+    conversations: [conversation],
+    nextCursor: "next",
+  });
   fetch.mockResolvedValueOnce(
     Response.json({ conversations: [conversation], nextCursor: null }),
   );

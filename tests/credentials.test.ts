@@ -47,17 +47,25 @@ describe("credential HTTP transport", () => {
     expect(fetch.mock.calls[0]![0].toString()).toBe(
       "https://api.example.test/v1/accounts",
     );
-    fetch.mockResolvedValue(
+    fetch.mockImplementation(async () =>
       Response.json({
         participants: [
           { ...participants[0], loginEmail: "private@example.test" },
         ],
       }),
     );
+    // A private field the SDK does not know is removed, never returned.
     await expect(
       client.listParticipants({ apiKey: "test-key" }),
+    ).resolves.toStrictEqual({ participants: [participants[0]] });
+    await expect(
+      new AgentWorkplace({
+        baseUrl: "https://api.example.test",
+        fetch,
+        unknownResponseFields: "reject",
+      }).listParticipants({ apiKey: "test-key" }),
     ).rejects.toThrow("invalid response");
-    // Addresses arrive only when asked for, so older shapes stay strict.
+    // Addresses are parsed only when asked for; otherwise they are removed.
     const withAddresses = participants.map((participant) => ({
       ...participant,
       mailboxAddress: "agent@awmail.ai",
@@ -76,7 +84,7 @@ describe("credential HTTP transport", () => {
     );
     await expect(
       client.listParticipants({ apiKey: "test-key" }),
-    ).rejects.toThrow("invalid response");
+    ).resolves.toStrictEqual({ participants });
   });
   it("uses explicit agent authentication for management and saved-candidate authentication for completion", async () => {
     const fetch = vi
@@ -147,7 +155,7 @@ describe("credential HTTP transport", () => {
       "Bearer replacement-secret",
     );
   });
-  it("uses native browser cookies only when explicitly requested and rejects secrets in metadata", async () => {
+  it("uses native browser cookies only when explicitly requested and never returns secrets in metadata", async () => {
     const fetch = vi
       .fn<typeof globalThis.fetch>()
       .mockResolvedValueOnce(Response.json({ keys: [] }))
@@ -176,9 +184,13 @@ describe("credential HTTP transport", () => {
     expect(
       new Headers(fetch.mock.calls[0]![1]!.headers).has("Authorization"),
     ).toBe(false);
-    await expect(
-      client.listAgentKeys({ humanSession: true }, accountId),
-    ).rejects.toThrow("invalid response");
+    const listed = await client.listAgentKeys(
+      { humanSession: true },
+      accountId,
+    );
+    expect(listed.keys).toHaveLength(1);
+    expect(listed.keys[0]).not.toHaveProperty("key");
+    expect(JSON.stringify(listed)).not.toContain("must-not-leak");
   });
   it("never sends keys to non-loopback HTTP for any new operation", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>();

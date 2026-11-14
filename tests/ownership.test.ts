@@ -31,13 +31,17 @@ it("uses private browser POSTs with cookies and no agent authorization", async (
   });
 });
 
-it("rejects a completion response containing private fields or a session token", async () => {
-  const client = new AgentWorkplace({
-    fetch: async () =>
-      Response.json({ state: "confirmed", token: "must-not-leak" }),
-  });
+it("never returns private fields or a session token from a completion response", async () => {
+  const fetch = async () =>
+    Response.json({ state: "confirmed", token: "must-not-leak" });
   await expect(
-    client.previewOwnership({ token: "a".repeat(43) }),
+    new AgentWorkplace({ fetch }).previewOwnership({ token: "a".repeat(43) }),
+  ).resolves.toStrictEqual({ state: "confirmed" });
+  await expect(
+    new AgentWorkplace({
+      fetch,
+      unknownResponseFields: "reject",
+    }).previewOwnership({ token: "a".repeat(43) }),
   ).rejects.toMatchObject({
     message: "The Agent Workplace API returned an invalid response",
   });

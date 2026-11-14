@@ -130,11 +130,9 @@ describe("owner email transport", () => {
   });
 
   it.each([
-    { operation: { ...operation, email: "private@example.test" } },
     { operation: { ...operation, state: "failed" } },
     { operation: { ...operation, generation: 0 } },
-    { operation: null, receiptProof },
-  ])("rejects malformed or private receipt responses", async (response) => {
+  ])("rejects malformed receipt responses", async (response) => {
     const client = new AgentWorkplace({
       baseUrl: "https://api.example.test",
       fetch: vi.fn().mockResolvedValue(Response.json(response)),
@@ -142,6 +140,27 @@ describe("owner email transport", () => {
     await expect(client.ownerEmailChangeStatus(receiptProof)).rejects.toThrow(
       "invalid response",
     );
+  });
+
+  it.each([
+    [{ operation: { ...operation, email: "private@example.test" } }, operation],
+    [{ operation: null, receiptProof }, null],
+  ])("never returns private receipt fields", async (response, expected) => {
+    const fetch = vi.fn(async () => Response.json(response));
+    const client = new AgentWorkplace({
+      baseUrl: "https://api.example.test",
+      fetch,
+    });
+    await expect(
+      client.ownerEmailChangeStatus(receiptProof),
+    ).resolves.toStrictEqual({ operation: expected });
+    await expect(
+      new AgentWorkplace({
+        baseUrl: "https://api.example.test",
+        fetch,
+        unknownResponseFields: "reject",
+      }).ownerEmailChangeStatus(receiptProof),
+    ).rejects.toThrow("invalid response");
   });
 
   it("preserves safe operation errors and echoed request IDs without retrying", async () => {

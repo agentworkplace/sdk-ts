@@ -41,12 +41,10 @@ describe("private deletion transport", () => {
       expect(new Headers(request?.headers).get("Authorization")).toBeNull();
     }
   });
-  it("rejects unsafe origins and private data in receipt responses", async () => {
-    const fetch = vi
-      .fn<typeof globalThis.fetch>()
-      .mockResolvedValue(
-        Response.json({ ...status, email: "private@example.test" }),
-      );
+  it("rejects unsafe origins and never returns private data in receipt responses", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json({ ...status, email: "private@example.test" }),
+    );
     const unsafe = new AgentWorkplace({
       baseUrl: "http://remote.example.test",
       fetch,
@@ -59,8 +57,15 @@ describe("private deletion transport", () => {
       baseUrl: "https://api.example.test",
       fetch,
     });
-    await expect(safe.workplaceDeletionStatus(proof)).rejects.toThrow(
-      "invalid response",
+    await expect(safe.workplaceDeletionStatus(proof)).resolves.toStrictEqual(
+      status,
     );
+    await expect(
+      new AgentWorkplace({
+        baseUrl: "https://api.example.test",
+        fetch,
+        unknownResponseFields: "reject",
+      }).workplaceDeletionStatus(proof),
+    ).rejects.toThrow("invalid response");
   });
 });
