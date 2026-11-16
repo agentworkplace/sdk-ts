@@ -7,6 +7,7 @@ export type {
   AgentWorkplaceOptions,
   CredentialAuthorization,
 } from "./client.js";
+export type { AgentWorkplaceDeprecation } from "./deprecation.js";
 export {
   AgentWorkplaceError,
   AgentWorkplaceInputError,
@@ -75,6 +76,8 @@ export type {
   ParticipantListWithMailboxes,
   ParticipantListRequest,
   AgentKeyList,
+  AgentKeyScopedList,
+  AgentKeyScopes,
   AgentCredential,
   KeyRotationResponse,
 } from "./contracts/credentials.js";
@@ -109,6 +112,10 @@ export type {
   MailOmissionList,
   Mailbox,
   MailboxList,
+  MailboxWithAddressHistory,
+  MailboxListWithAddressHistory,
+  MailboxAddressChange,
+  MailboxInclude,
   MailboxAddressChoice,
   SendMailRequest,
   MailOutgoingAttachmentSource,

@@ -192,6 +192,55 @@ describe("credential HTTP transport", () => {
     expect(listed.keys[0]).not.toHaveProperty("key");
     expect(JSON.stringify(listed)).not.toContain("must-not-leak");
   });
+  it("creates scoped keys and lists scopes only when asked", async () => {
+    const metadata = {
+      id,
+      name: "Triage",
+      enabled: true,
+      createdAt: "2026-11-15T00:00:00Z",
+      expiresAt: null,
+    };
+    const fetch = vi
+      .fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(Response.json({ id, key: "scoped-secret" }))
+      .mockResolvedValueOnce(Response.json({ id, key: "full-secret" }))
+      .mockResolvedValueOnce(
+        Response.json({ keys: [{ ...metadata, scopes: ["mail", "files"] }] }),
+      )
+      .mockResolvedValueOnce(Response.json({ keys: [metadata] }));
+    const client = new AgentWorkplace({
+      baseUrl: "https://api.example.test",
+      fetch,
+    });
+    const auth = { apiKey: "secret" };
+    await client.createAgentKey(auth, accountId, "Triage", {
+      scopes: ["mail", "files"],
+    });
+    await client.createAgentKey(auth, accountId, "Full");
+    expect(fetch.mock.calls.map((call) => call[1]?.body)).toEqual([
+      JSON.stringify({ name: "Triage", scopes: ["mail", "files"] }),
+      JSON.stringify({ name: "Full" }),
+    ]);
+    const scoped = await client.listAgentKeys(auth, accountId, {
+      include: "scopes",
+    });
+    expect(scoped.keys[0]!.scopes).toEqual(["mail", "files"]);
+    expect(fetch.mock.calls[2]![0].toString()).toBe(
+      `https://api.example.test/v1/accounts/${accountId}/keys?include=scopes`,
+    );
+    const plain = await client.listAgentKeys(auth, accountId);
+    expect(plain.keys[0]).not.toHaveProperty("scopes");
+    expect(fetch.mock.calls[3]![0].toString()).toBe(
+      `https://api.example.test/v1/accounts/${accountId}/keys`,
+    );
+    for (const scopes of [[], ["mail", "mail"], ["unscoped"]])
+      await expect(
+        client.createAgentKey(auth, accountId, "Bad", {
+          scopes: scopes as never,
+        }),
+      ).rejects.toMatchObject({ code: "invalid_input" });
+    expect(fetch).toHaveBeenCalledTimes(4);
+  });
   it("never sends keys to non-loopback HTTP for any new operation", async () => {
     const fetch = vi.fn<typeof globalThis.fetch>();
     const client = new AgentWorkplace({

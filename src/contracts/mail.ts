@@ -17,15 +17,40 @@ export const mailboxSchema = z.object({
   mailboxId: z.uuid(),
   accountId: z.uuid(),
   address: z.email(),
-  /** An earlier workplace email address that still receives mail into this
-   * Mailbox; mail is never sent from it. Absent from servers that predate it. */
+  /** The most recent earlier workplace email address that still receives mail
+   * into this Mailbox; mail is never sent from it. Absent from servers that
+   * predate it. `previousAddresses` lists every earlier address. */
   previousAddress: z.email().nullable().optional(),
 });
 export type Mailbox = z.infer<typeof mailboxSchema>;
+/** Lifetime changes to a new name; switching back to an earlier address is free. */
+export const mailboxAddressChangeLimit = 3;
+/** Opt-in `include=addressHistory` additions; responses without it keep their
+ * original shape for clients that reject unknown fields. */
+export const mailboxIncludeSchema = z.literal("addressHistory");
+export type MailboxInclude = z.infer<typeof mailboxIncludeSchema>;
+export const mailboxWithAddressHistorySchema = mailboxSchema.extend({
+  /** Every earlier address that still receives into this Mailbox, newest
+   * first. None is ever sent from or issued to another Mailbox. */
+  previousAddresses: z.array(z.email()),
+  /** Remaining lifetime changes to a new name. */
+  addressChangesRemaining: z
+    .number()
+    .int()
+    .min(0)
+    .max(mailboxAddressChangeLimit),
+});
+export type MailboxWithAddressHistory = z.infer<
+  typeof mailboxWithAddressHistorySchema
+>;
+export const mailboxRequestSchema = z
+  .object({ include: mailboxIncludeSchema.optional() })
+  .strict();
 export const mailboxListRequestSchema = z
   .object({
     after: z.uuid().optional(),
     limit: z.coerce.number().int().min(1).max(100).default(50),
+    include: mailboxIncludeSchema.optional(),
   })
   .strict();
 export const mailboxListSchema = z.object({
@@ -33,6 +58,24 @@ export const mailboxListSchema = z.object({
   nextCursor: z.uuid().nullable(),
 });
 export type MailboxList = z.infer<typeof mailboxListSchema>;
+export const mailboxListWithAddressHistorySchema = z.object({
+  mailboxes: z.array(mailboxWithAddressHistorySchema),
+  nextCursor: z.uuid().nullable(),
+});
+export type MailboxListWithAddressHistory = z.infer<
+  typeof mailboxListWithAddressHistorySchema
+>;
+/** Change a Mailbox's current address. `localPart` follows the activation
+ * rules, or names one of the Mailbox's own earlier platform-domain addresses
+ * to switch back for free. `expectedAddress` is the current address the caller
+ * read; a stale value is refused, and repeating a completed change succeeds. */
+export const mailboxAddressChangeSchema = z
+  .object({
+    localPart: z.string().trim().min(3).max(48),
+    expectedAddress: z.email().max(320),
+  })
+  .strict();
+export type MailboxAddressChange = z.infer<typeof mailboxAddressChangeSchema>;
 
 // Runtime-independent UTF-8 wire bound (contracts are also used outside Node).
 function utf8Bytes(value: string) {
