@@ -259,6 +259,56 @@ test("mailbox previous address is optional, nullable and an email", async () => 
   ).toBe(false);
 });
 
+test("address history and address changes validate their wire shapes", async () => {
+  const {
+    mailboxWithAddressHistorySchema,
+    mailboxListRequestSchema,
+    mailboxRequestSchema,
+    mailboxAddressChangeSchema,
+  } = await import("./mail.js");
+  const base = {
+    mailboxId: "00000000-0000-4000-8000-000000000001",
+    accountId: "00000000-0000-4000-8000-000000000002",
+    address: "agent@awmail.ai",
+    previousAddress: "earlier@awmail.ai",
+    previousAddresses: ["earlier@awmail.ai", "agent@mail.agentworkplace.dev"],
+    addressChangesRemaining: 2,
+  };
+  expect(mailboxWithAddressHistorySchema.safeParse(base).success).toBe(true);
+  for (const addressChangesRemaining of [-1, 4, 1.5])
+    expect(
+      mailboxWithAddressHistorySchema.safeParse({
+        ...base,
+        addressChangesRemaining,
+      }).success,
+    ).toBe(false);
+  expect(
+    mailboxWithAddressHistorySchema.safeParse({
+      ...base,
+      previousAddresses: ["not an address"],
+    }).success,
+  ).toBe(false);
+  expect(
+    mailboxListRequestSchema.parse({ include: "addressHistory" }),
+  ).toMatchObject({ include: "addressHistory", limit: 50 });
+  expect(mailboxRequestSchema.safeParse({ include: "accounts" }).success).toBe(
+    false,
+  );
+  expect(
+    mailboxAddressChangeSchema.parse({
+      localPart: "  new-name ",
+      expectedAddress: "agent@awmail.ai",
+    }),
+  ).toEqual({ localPart: "new-name", expectedAddress: "agent@awmail.ai" });
+  for (const invalid of [
+    { localPart: "ab", expectedAddress: "agent@awmail.ai" },
+    { localPart: "new-name", expectedAddress: "not an address" },
+    { localPart: "new-name" },
+    { localPart: "new-name", expectedAddress: "agent@awmail.ai", extra: 1 },
+  ])
+    expect(mailboxAddressChangeSchema.safeParse(invalid).success).toBe(false);
+});
+
 test.each([
   "<simple@example.test>",
   "<first.second@host>",

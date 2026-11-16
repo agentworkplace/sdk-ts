@@ -1,7 +1,28 @@
 import { z } from "zod";
 
+import { agentGrantScopeSchema, agentGrantScopes } from "./agent-grants.js";
+
 export const agentKeyNameSchema = z
   .object({ name: z.string().trim().min(1).max(32) })
+  .strict();
+/** A scoped key carries one to nine distinct agent grant scope groups. */
+export const agentKeyScopesSchema = z
+  .array(agentGrantScopeSchema)
+  .min(1)
+  .max(agentGrantScopes.length)
+  .refine((scopes) => new Set(scopes).size === scopes.length, {
+    message: "Scopes must be distinct",
+  });
+/** Creating a key with scopes; an omitted list issues an unscoped key. */
+export const agentKeyCreateRequestSchema = z
+  .object({
+    name: z.string().trim().min(1).max(32),
+    scopes: agentKeyScopesSchema.optional(),
+  })
+  .strict();
+/** Listing returns scopes only on request: released clients reject the field. */
+export const agentKeyListQuerySchema = z
+  .object({ include: z.literal("scopes").optional() })
   .strict();
 export const agentKeyTargetSchema = z.object({ accountId: z.uuid() }).strict();
 export const agentKeyIdSchema = agentKeyTargetSchema.extend({
@@ -18,6 +39,13 @@ export const agentKeyMetadataSchema = z
   .strict();
 export const agentKeyListSchema = z
   .object({ keys: z.array(agentKeyMetadataSchema) })
+  .strict();
+/** Key metadata with its scopes; `null` is an unscoped key. */
+export const agentKeyScopedMetadataSchema = agentKeyMetadataSchema
+  .extend({ scopes: agentKeyScopesSchema.nullable() })
+  .strict();
+export const agentKeyScopedListSchema = z
+  .object({ keys: z.array(agentKeyScopedMetadataSchema) })
   .strict();
 export const agentCredentialSchema = z
   .object({ id: z.uuid(), key: z.string().min(1) })
@@ -55,6 +83,8 @@ export const keyRotationCompletedSchema = z
   .object({ completed: z.literal(true) })
   .strict();
 export type AgentKeyList = z.infer<typeof agentKeyListSchema>;
+export type AgentKeyScopedList = z.infer<typeof agentKeyScopedListSchema>;
+export type AgentKeyScopes = z.infer<typeof agentKeyScopesSchema>;
 export type AgentCredential = z.infer<typeof agentCredentialSchema>;
 export type KeyRotationResponse = z.infer<typeof keyRotationResponseSchema>;
 

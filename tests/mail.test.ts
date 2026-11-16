@@ -37,6 +37,66 @@ test("mailbox discovery uses API authorization, pagination and validated respons
   ).toBe("Bearer test-key");
   expect(fetch.mock.calls[1]![1]?.credentials).toBe("include");
 });
+test("address history is opt-in, and address changes post the expected current address", async () => {
+  const history = {
+    ...mailbox,
+    address: "second@awmail.ai",
+    previousAddress: "sample@awmail.ai",
+    previousAddresses: ["sample@awmail.ai"],
+    addressChangesRemaining: 2,
+  };
+  const fetch = vi
+    .fn<typeof globalThis.fetch>()
+    .mockResolvedValueOnce(
+      Response.json({ mailboxes: [history], nextCursor: null }),
+    )
+    .mockResolvedValueOnce(Response.json(history))
+    .mockResolvedValueOnce(Response.json(history))
+    .mockResolvedValueOnce(
+      Response.json(
+        { error: { code: "address_change_limit", message: "Changes used" } },
+        { status: 409 },
+      ),
+    );
+  const client = new AgentWorkplace({
+    baseUrl: "https://api.example.test",
+    fetch,
+  });
+  const auth = { apiKey: "test-key" };
+  expect(
+    await client.listMailboxes(auth, { include: "addressHistory" }),
+  ).toEqual({ mailboxes: [history], nextCursor: null });
+  expect(String(fetch.mock.calls[0]![0])).toContain(
+    "v1/mailboxes?include=addressHistory",
+  );
+  expect(
+    await client.getMailbox(auth, mailbox.mailboxId, {
+      include: "addressHistory",
+    }),
+  ).toEqual(history);
+  expect(String(fetch.mock.calls[1]![0])).toContain(
+    `v1/mailboxes/${mailbox.mailboxId}?include=addressHistory`,
+  );
+  const change = { localPart: "second", expectedAddress: "sample@awmail.ai" };
+  expect(
+    await client.changeMailboxAddress(auth, mailbox.mailboxId, change),
+  ).toEqual(history);
+  expect(String(fetch.mock.calls[2]![0])).toContain(
+    `v1/mailboxes/${mailbox.mailboxId}/address`,
+  );
+  expect(fetch.mock.calls[2]![1]?.method).toBe("POST");
+  expect(JSON.parse(String(fetch.mock.calls[2]![1]?.body))).toEqual(change);
+  await expect(
+    client.changeMailboxAddress(auth, mailbox.mailboxId, change),
+  ).rejects.toMatchObject({ status: 409, code: "address_change_limit" });
+  expect(() =>
+    client.changeMailboxAddress(auth, mailbox.mailboxId, {
+      localPart: "x",
+      expectedAddress: "sample@awmail.ai",
+    }),
+  ).toThrow("Invalid Mailbox address change");
+  expect(fetch).toHaveBeenCalledTimes(4);
+});
 test("choice conflicts preserve safe revision and request identity, malformed mailboxes fail closed", async () => {
   const requestId = "33333333-3333-4333-8333-333333333333";
   const fetch = vi

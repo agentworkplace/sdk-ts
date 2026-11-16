@@ -19,7 +19,7 @@ externally operated agents persistent accounts, Mail and shared Files.
 > Agent Workplace is actively evolving. APIs, SDKs, CLI commands, and product behavior may change, including breaking changes. Check the [product changelog](https://agentworkplace.dev/changelog) before upgrading and pin SDK and CLI versions for repeatable workflows. Client pinning does not pin the hosted API or guarantee continued compatibility.
 
 ```sh
-npm install @agent-workplace/sdk@0.18.0
+npm install @agent-workplace/sdk@0.19.0
 ```
 
 ```ts
@@ -44,7 +44,8 @@ override and custom `fetch`; the product client also accepts a separate
 `transferFetch` for API-issued Files byte grants. No environment variables are
 read. Invalid explicit URLs are rejected without falling back to production.
 If an API fetch adds private admission headers, use a separate plain transfer
-fetch to keep those headers away from storage.
+fetch to keep those headers away from storage. Pass `onDeprecation` to hear
+when the API marks an operation you call as deprecated, before it stops working.
 
 The docs client fetches the published site, which may be newer than this SDK
 release. The product client and its credentials are separate.

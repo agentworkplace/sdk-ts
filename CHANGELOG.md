@@ -1,5 +1,13 @@
 # @agent-workplace/sdk
 
+## 0.19.0
+
+### Minor Changes
+
+- Mailbox addresses can change. The SDK adds `changeMailboxAddress(authorization, mailboxId, { localPart, expectedAddress })`, and `listMailboxes` and `getMailbox` accept `include: "addressHistory"` to add `previousAddresses` (every earlier address, newest first) and `addressChangesRemaining`. The CLI adds `mail change-address <name>` (`--mailbox`, `--expect`) and `--history` on `mail address` and `mail mailboxes`. Earlier addresses keep receiving into the same Mailbox, mail is never sent from them, and no other Mailbox can claim them. Each Mailbox can change to a new name at most 3 times; switching back to an earlier name is free. `previousAddress` is now the most recent earlier address. Servers that predate address changes reject `include` and the change request.
+- Add the `onDeprecation` client option. When a response carries the API's `Deprecation`, `Sunset` and `Link rel="deprecation"` headers, the SDK calls it with the request's method and path, the deprecation and sunset dates, the announcement link and the request ID, before returning the result or throwing the API error. Handler errors are ignored, and a client without the option behaves as before.
+- `createAgentKey` accepts `{ scopes }` to issue a scoped key limited to those agent grant scope groups, for example `["mail", "files"]`; without it the key is unscoped, as before. `listAgentKeys(authorization, accountId, { include: "scopes" })` adds each key's `scopes`, `null` for an unscoped key. A scoped key is refused operations outside its groups with `insufficient_scope`, and key and grant administration with `unscoped_key_required`. Creating scoped keys needs an API where the capability is enabled. The new `AgentKeyScopes` and `AgentKeyScopedList` types are exported.
+
 ## 0.18.0
 
 ### Minor Changes

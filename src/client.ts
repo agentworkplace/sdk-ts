@@ -197,12 +197,26 @@ import {
   mailOmissionListSchema,
   mailboxSchema,
   mailboxListSchema,
+  mailboxWithAddressHistorySchema,
+  mailboxListWithAddressHistorySchema,
+  mailboxAddressChangeSchema,
+  type Mailbox,
+  type MailboxList,
+  type MailboxWithAddressHistory,
+  type MailboxListWithAddressHistory,
+  type MailboxAddressChange,
   mailOperationSchema,
   type SendMailRequest,
   type ComposeMailRequest,
 } from "./contracts/mail.js";
 import {
+  agentKeyCreateRequestSchema,
+  agentKeyListQuerySchema,
   agentKeyListSchema,
+  agentKeyScopedListSchema,
+  type AgentKeyList,
+  type AgentKeyScopedList,
+  type AgentKeyScopes,
   participantListSchema,
   participantListWithMailboxesSchema,
   type ParticipantList,
@@ -270,6 +284,11 @@ import {
   AgentWorkplaceNetworkError,
 } from "./errors.js";
 import { parseIgnoringUnknownFields } from "./unknown-fields.js";
+import {
+  notifyDeprecation,
+  responseDeprecation,
+  type AgentWorkplaceDeprecation,
+} from "./deprecation.js";
 import { sdkVersion } from "./version.js";
 
 export interface AgentWorkplaceOptions {
@@ -288,6 +307,12 @@ export interface AgentWorkplaceOptions {
    * before `agent-workplace-sdk/<version>` in `User-Agent`. Server runtimes
    * send the header; browsers don't, so it never adds a CORS preflight. */
   userAgent?: string;
+  /** Called when a response says its operation is deprecated (`Deprecation`,
+   * `Sunset` and `Link rel="deprecation"` headers), before the result or error
+   * is returned. The operation still ran; plan the change before `sunsetAt`.
+   * The handler's errors and rejections are ignored. Browsers expose these
+   * headers only when the API allows them through CORS. */
+  onDeprecation?: (deprecation: AgentWorkplaceDeprecation) => void;
 }
 
 /** One or two `name/version` tokens; no comments, spaces or control text. */
@@ -422,6 +447,8 @@ export class AgentWorkplace {
   readonly #transferFetch: typeof globalThis.fetch;
   readonly #rejectUnknownFields: boolean;
   readonly #userAgent: string | undefined;
+  readonly #onDeprecation:
+    ((deprecation: AgentWorkplaceDeprecation) => void) | undefined;
 
   constructor(options: AgentWorkplaceOptions = {}) {
     if (
@@ -469,6 +496,12 @@ export class AgentWorkplace {
       throw new AgentWorkplaceInputError(
         "userAgent must be one or two name/version tokens",
       );
+    if (
+      options.onDeprecation !== undefined &&
+      typeof options.onDeprecation !== "function"
+    )
+      throw new AgentWorkplaceInputError("onDeprecation must be a function");
+    this.#onDeprecation = options.onDeprecation;
     const product = `agent-workplace-sdk/${sdkVersion}`;
     this.#userAgent = serverRuntime()
       ? options.userAgent === undefined
@@ -1872,24 +1905,95 @@ export class AgentWorkplace {
     );
   }
 
+  /** `include: "addressHistory"` adds every earlier address that still
+   * receives into each Mailbox and its remaining address changes. */
   listMailboxes(
     authorization: CredentialAuthorization,
-    input: { after?: string; limit?: number } = {},
-  ) {
+    input: { after?: string; limit?: number; include: "addressHistory" },
+  ): Promise<MailboxListWithAddressHistory>;
+  listMailboxes(
+    authorization: CredentialAuthorization,
+    input?: { after?: string; limit?: number; include?: undefined },
+  ): Promise<MailboxList>;
+  listMailboxes(
+    authorization: CredentialAuthorization,
+    input?: { after?: string; limit?: number; include?: "addressHistory" },
+  ): Promise<MailboxList | MailboxListWithAddressHistory>;
+  listMailboxes(
+    authorization: CredentialAuthorization,
+    input: { after?: string; limit?: number; include?: "addressHistory" } = {},
+  ): Promise<MailboxList | MailboxListWithAddressHistory> {
     const query = new URLSearchParams();
     if (input.after !== undefined) query.set("after", input.after);
     if (input.limit !== undefined) query.set("limit", String(input.limit));
+    if (input.include !== undefined) {
+      if (input.include !== "addressHistory")
+        throw new AgentWorkplaceInputError("Invalid Mailbox include");
+      query.set("include", input.include);
+    }
     return this.#request(
       `v1/mailboxes${query.size ? `?${query}` : ""}`,
-      (value) => mailboxListSchema.parse(value),
+      (value) =>
+        input.include
+          ? mailboxListWithAddressHistorySchema.parse(value)
+          : mailboxListSchema.parse(value),
       this.#credentialAuthorization(authorization),
     );
   }
-  getMailbox(authorization: CredentialAuthorization, mailboxId: string) {
+  /** `include: "addressHistory"` adds every earlier address that still
+   * receives into the Mailbox and its remaining address changes. */
+  getMailbox(
+    authorization: CredentialAuthorization,
+    mailboxId: string,
+    options: { include: "addressHistory" },
+  ): Promise<MailboxWithAddressHistory>;
+  getMailbox(
+    authorization: CredentialAuthorization,
+    mailboxId: string,
+    options?: { include?: undefined },
+  ): Promise<Mailbox>;
+  getMailbox(
+    authorization: CredentialAuthorization,
+    mailboxId: string,
+    options?: { include?: "addressHistory" },
+  ): Promise<Mailbox | MailboxWithAddressHistory>;
+  getMailbox(
+    authorization: CredentialAuthorization,
+    mailboxId: string,
+    options: { include?: "addressHistory" } = {},
+  ): Promise<Mailbox | MailboxWithAddressHistory> {
+    if (options.include !== undefined && options.include !== "addressHistory")
+      throw new AgentWorkplaceInputError("Invalid Mailbox include");
     return this.#request(
-      `v1/mailboxes/${encodeURIComponent(mailboxId)}`,
-      (value) => mailboxSchema.parse(value),
+      `v1/mailboxes/${encodeURIComponent(mailboxId)}${options.include ? "?include=addressHistory" : ""}`,
+      (value) =>
+        options.include
+          ? mailboxWithAddressHistorySchema.parse(value)
+          : mailboxSchema.parse(value),
       this.#credentialAuthorization(authorization),
+    );
+  }
+  /** Changes a Mailbox's current address. Earlier addresses keep receiving
+   * into it and are never sent from or reissued. `localPart` is a new name
+   * (at most 3 per Mailbox lifetime) or one of its earlier names, which
+   * switches back for free. `expectedAddress` is the current address read
+   * beforehand; repeating a completed change succeeds without another effect. */
+  changeMailboxAddress(
+    authorization: CredentialAuthorization,
+    mailboxId: string,
+    input: MailboxAddressChange,
+  ) {
+    const parsed = mailboxAddressChangeSchema.safeParse(input);
+    if (!parsed.success)
+      throw new AgentWorkplaceInputError("Invalid Mailbox address change");
+    return this.#request(
+      `v1/mailboxes/${encodeURIComponent(mailboxId)}/address`,
+      (value) => mailboxWithAddressHistorySchema.parse(value),
+      {
+        ...this.#credentialAuthorization(authorization),
+        method: "POST",
+        body: JSON.stringify(parsed.data),
+      },
     );
   }
   /** Reuse the same operation ID and immutable payload after an uncertain response. */
@@ -2803,25 +2907,56 @@ export class AgentWorkplace {
       { ...this.#credentialAuthorization(authorization), method: "DELETE" },
     );
   }
-  listAgentKeys(authorization: CredentialAuthorization, accountId: string) {
+  /** `include: "scopes"` adds each key's scopes, `null` for an unscoped key. */
+  listAgentKeys(
+    authorization: CredentialAuthorization,
+    accountId: string,
+    options: { include: "scopes" },
+  ): Promise<AgentKeyScopedList>;
+  listAgentKeys(
+    authorization: CredentialAuthorization,
+    accountId: string,
+    options?: { include?: undefined },
+  ): Promise<AgentKeyList>;
+  async listAgentKeys(
+    authorization: CredentialAuthorization,
+    accountId: string,
+    options: { include?: "scopes" } = {},
+  ): Promise<AgentKeyList | AgentKeyScopedList> {
+    const parsed = agentKeyListQuerySchema.safeParse(options);
+    if (!parsed.success)
+      throw new AgentWorkplaceInputError("Invalid key list request");
+    const { include } = parsed.data;
     return this.#request(
-      `v1/accounts/${encodeURIComponent(accountId)}/keys`,
-      (value) => agentKeyListSchema.parse(value),
+      `v1/accounts/${encodeURIComponent(accountId)}/keys${include ? `?${new URLSearchParams({ include })}` : ""}`,
+      (value) =>
+        include
+          ? agentKeyScopedListSchema.parse(value)
+          : agentKeyListSchema.parse(value),
       this.#credentialAuthorization(authorization),
     );
   }
-  createAgentKey(
+  /** `scopes` issues a scoped key limited to those agent grant scope groups;
+   * without them the key is unscoped and carries the account's full authority. */
+  async createAgentKey(
     authorization: CredentialAuthorization,
     accountId: string,
     name: string,
+    options: { scopes?: AgentKeyScopes } = {},
   ) {
+    const parsed = agentKeyCreateRequestSchema.safeParse({
+      name,
+      ...(options.scopes ? { scopes: options.scopes } : {}),
+    });
+    if (!parsed.success)
+      throw new AgentWorkplaceInputError("Invalid key creation request");
     return this.#request(
       `v1/accounts/${encodeURIComponent(accountId)}/keys`,
       (value) => agentCredentialSchema.parse(value),
       {
         ...this.#credentialAuthorization(authorization),
         method: "POST",
-        body: JSON.stringify({ name }),
+        body: JSON.stringify(parsed.data),
       },
     );
   }
@@ -2989,29 +3124,28 @@ export class AgentWorkplace {
       );
     const requestId = globalThis.crypto.randomUUID();
     const fetchRequest = this.#fetch;
-    const response = await fetchRequest(
-      new globalThis.URL(path, this.#baseUrl),
-      {
-        method: options.method ?? "GET",
-        redirect: "error",
-        ...(options.signal ? { signal: options.signal } : {}),
-        ...(options.credentials ? { credentials: options.credentials } : {}),
-        ...(options.body === undefined ? {} : { body: options.body }),
-        headers: {
-          Accept: "application/json",
-          ...(options.body === undefined
-            ? {}
-            : { "Content-Type": "application/json" }),
-          ...(options.apiKey === undefined
-            ? {}
-            : { Authorization: `Bearer ${options.apiKey}` }),
-          [requestIdHeader]: requestId,
-          ...(this.#userAgent === undefined
-            ? {}
-            : { "User-Agent": this.#userAgent }),
-        },
+    const url = new globalThis.URL(path, this.#baseUrl);
+    const method = options.method ?? "GET";
+    const response = await fetchRequest(url, {
+      method,
+      redirect: "error",
+      ...(options.signal ? { signal: options.signal } : {}),
+      ...(options.credentials ? { credentials: options.credentials } : {}),
+      ...(options.body === undefined ? {} : { body: options.body }),
+      headers: {
+        Accept: "application/json",
+        ...(options.body === undefined
+          ? {}
+          : { "Content-Type": "application/json" }),
+        ...(options.apiKey === undefined
+          ? {}
+          : { Authorization: `Bearer ${options.apiKey}` }),
+        [requestIdHeader]: requestId,
+        ...(this.#userAgent === undefined
+          ? {}
+          : { "User-Agent": this.#userAgent }),
       },
-    ).catch((cause: unknown) => {
+    }).catch((cause: unknown) => {
       if (cause instanceof TypeError)
         throw new AgentWorkplaceNetworkError(
           options.sensitiveResponse ? undefined : { cause },
@@ -3020,6 +3154,14 @@ export class AgentWorkplace {
     });
     const returnedRequestId = responseRequestId(response);
     const retryAfterSeconds = responseRetryAfter(response);
+    notifyDeprecation(
+      this.#onDeprecation,
+      responseDeprecation(response, {
+        method,
+        url,
+        requestId: returnedRequestId,
+      }),
+    );
 
     let body: unknown;
 
