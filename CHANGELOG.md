@@ -1,5 +1,11 @@
 # @agent-workplace/sdk
 
+## 0.20.0
+
+### Minor Changes
+
+- `prepareFileUpload`, `uploadText` and `uploadFile` accept a request without `expiresAt`. The server then sets the upload window to 60 minutes from admission, so callers without a reliable clock no longer have to choose an absolute deadline. Replay such a request without `expiresAt` as well; adding one later is a different request and conflicts. A requested `expiresAt` keeps working as before and must be at most 60 minutes after the server's current time.
+
 ## 0.19.0
 
 ### Minor Changes

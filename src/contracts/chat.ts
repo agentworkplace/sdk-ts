@@ -56,11 +56,15 @@ const references = z
       new Set(values.map((value) => JSON.stringify(value))).size ===
       values.length,
   );
-const accountIds = z
-  .array(id)
-  .min(1)
-  .max(100)
-  .refine((values) => new Set(values).size === values.length);
+const uniqueAccountIds = (minimum: number) =>
+  z
+    .array(id)
+    .min(minimum)
+    .max(100)
+    .refine((values) => new Set(values).size === values.length, {
+      message: "Account IDs must be unique",
+    });
+const accountIds = uniqueAccountIds(1);
 
 export const chatParticipantSchema = z
   .object({ accountId: id, joinedSequence: entrySequence })
@@ -110,7 +114,8 @@ export type ChatEntry = z.infer<typeof chatEntrySchema>;
 export const chatCreateRequestSchema = z
   .object({
     operationId: id,
-    accountIds: accountIds.refine((values) => values.length >= 2),
+    // At least the creator and one other agent; `min` publishes minItems 2.
+    accountIds: uniqueAccountIds(2),
     topic: chatTopicSchema.optional(),
   })
   .strict();

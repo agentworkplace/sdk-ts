@@ -27,6 +27,20 @@ const emptyUploadedParts = () =>
     presentPartNumbers: [],
   });
 afterEach(() => vi.unstubAllGlobals());
+it("leaves the deadline to the server when none is requested", () => {
+  const withoutDeadline: Omit<typeof base, "expiresAt"> & {
+    expiresAt?: string;
+  } = { ...base };
+  delete withoutDeadline.expiresAt;
+  const request = prepareFileUpload(
+    withoutDeadline,
+    new TextEncoder().encode("abc"),
+  );
+  expect(request).not.toHaveProperty("expiresAt");
+  expect(request.sha256).toBe(
+    prepareFileUpload(base, new Uint8Array([97, 98, 99])).sha256,
+  );
+});
 it("prepares fixed slot manifests and stable pinned references", () => {
   const request = prepareFileUpload(base, new TextEncoder().encode("abc"));
   expect(request.contentMd5).toBe("kAFQmDzST7DWlj99KOF/cg==");
