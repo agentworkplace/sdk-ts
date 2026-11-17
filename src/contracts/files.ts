@@ -43,7 +43,9 @@ export const beginFileUploadRequestSchema = z
     contentType: fileContentTypeSchema,
     sha256,
     contentMd5: digest,
-    expiresAt: z.iso.datetime(),
+    /** At most 60 minutes after admission. Omit it to let the server set the
+     * full window from admission; replay the request without it as well. */
+    expiresAt: z.iso.datetime().optional(),
     multipartParts: z
       .array(
         z

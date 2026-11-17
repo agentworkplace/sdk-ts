@@ -51,7 +51,14 @@ describe("Files wire boundaries", () => {
         byteLength: 64 * 1024 * 1024,
       }).success,
     ).toBe(true);
+    // The server sets the window when no deadline is requested.
+    const withoutDeadline: Partial<typeof input> = { ...input };
+    delete withoutDeadline.expiresAt;
+    expect(
+      beginFileUploadRequestSchema.safeParse(withoutDeadline).success,
+    ).toBe(true);
     for (const change of [
+      { expiresAt: "soon" },
       { byteLength: 2_000_000_001 },
       { contentType: "text/plain\n" },
       { multipartParts: [] },

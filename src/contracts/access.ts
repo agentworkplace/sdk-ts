@@ -96,6 +96,9 @@ export const accessStatusSchema = z.object({
   accountId: z.uuid(),
   role: z.enum(["owner", "admin", "member"]),
   workplaceState: z.enum(["unconfirmed", "confirmed"]),
+  /** The signup's cleanup deadline. It is still present once `workplaceState`
+   * is `confirmed` but no longer applies; account status reports current
+   * limits. Non-null in /v1, so installed clients keep parsing it. */
   cleanupAt: z.iso.datetime(),
   acknowledged: z.boolean(),
   nomination: z

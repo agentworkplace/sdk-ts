@@ -38,7 +38,8 @@ export function prepareFileUpload(
     operationId: string;
     target: BeginFileUploadRequest["target"];
     contentType: string;
-    expiresAt: string;
+    /** At most 60 minutes ahead; omit it to let the server set the window. */
+    expiresAt?: string;
   },
   bytes: Uint8Array,
 ): BeginFileUploadRequest {
